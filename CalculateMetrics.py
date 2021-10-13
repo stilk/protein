@@ -16,6 +16,7 @@ def SetUpPlottingPackages():
     #cowplot = importr('cowplot')
     lme4 = importr('lme4')
     glmnet = importr('glmnet')
+    lmertest = importr('lmerTest')
     data_table = importr('data.table')
     ro.r.source('/labs/ccurtis2/tilk/scripts/protein/GetRegressionStats.R') # Source R script for plotting
 
@@ -36,6 +37,8 @@ def GetRegressionStatsInput(Dataset, DataType):
     @Dataset = `CCLE`, `GTEX` or `TCGA`
     @DataType = `Expression`, `RNAi` or `Drug`
     '''
+    if Dataset == "TS":
+        return(GetExpressionData(Dataset='TS'))
     if DataType == 'RNAi':
         Values = GetRNAiResponseData()
     elif DataType == 'Drug':
@@ -46,7 +49,7 @@ def GetRegressionStatsInput(Dataset, DataType):
     Purity = GetTumorPurity()
     Tissue = GetTissueType(Dataset)
     Stats = Values.merge(Muts, left_on='Barcode', right_on='Barcode')
-    Stats['LogScore'] = np.log10(Stats['MutLoad'])
+    Stats['LogScore'] = np.log10(Stats['MutLoad'] + 1)
     if Dataset == 'TCGA':
         Covariates = Tissue.merge(Purity, left_on='Barcode', right_on='Barcode')
     else:
@@ -57,7 +60,7 @@ def GetRegressionEstimates(Dataset, DataType):
     SetUpPlottingPackages()
     df = GetRegressionStatsInput(Dataset, DataType)
     R = ConvertPandasDFtoR(df)
-    return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'Mixed-Effect')))
+    return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'MixedEffect')))
 
 
-GetRegressionEstimates(Dataset='TCGA', DataType='Expression')
+GetRegressionEstimates(Dataset='TCGA', DataType='Expression').to_csv('ExpressionMixedEffectRegressionEstimatesTCGA')
