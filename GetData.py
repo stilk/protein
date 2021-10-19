@@ -20,13 +20,15 @@ def GetExpressionData(Dataset, GeneSet=[]):
         df = pd.read_csv(DataDir + '/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct.gz', sep='\t', skiprows=2).drop(columns=['Name'])
         df = pd.melt(df, id_vars=['Description']).rename(columns={'Description': 'GeneName','variable':'Barcode','value':'Value'})
     elif 'TCGA' in Dataset:
-        ListOfFiles = glob.glob(os.path.join(DataDir + "/*/HiSeqV2.gz"))
+        ListOfFiles = glob.glob(os.path.join(DataDir + "/Xena/*/HiSeqV2.gz"))
         output = []
         for FileName in ListOfFiles:
             output.append(pd.read_csv(FileName, sep='\t').set_index('sample'))
         df = pd.melt(pd.concat(output, axis=1).reset_index(), id_vars=['sample']).rename(columns={'sample':'GeneName', 'value':'Value','variable':'Barcode'})
+    elif 'TS' in Dataset:
+        df = pd.read_csv('TCGA_TS.txt')
     if len(GeneSet) != 0:
-        df = df[df['geneName'].isin(GeneSet)]
+        df = df[df['GeneName'].isin(GeneSet)]
     else:
         return(df)
 
@@ -118,16 +120,20 @@ def RunVEPToGetDeleteriousScores():
 def GetMutations(Dataset):
     DataDir = os.getcwd() + '/Data/Raw/Mutations/' + Dataset + '/'
     if 'TCGA' in Dataset:
-        muts = pd.read_csv(DataDir + "mc3.v0.2.8.PUBLIC.maf.gz", sep='\t', usecols = ['Variant_Classification','Tumor_Sample_Barcode']).rename(
+        muts = pd.read_csv(DataDir + "mc3.v0.2.8.PUBLIC.maf.gz", sep='\t', usecols = ['Variant_Classification','Tumor_Sample_Barcode','Hugo_Symbol','PolyPhen']).rename(
             columns={'Tumor_Sample_Barcode': 'Barcode'})
         muts['Barcode'] = muts['Barcode'].str[0:15]
+        muts = muts[~muts['Variant_Classification'].isin(['In_Frame_Ins','In_Frame_Del'])] # Don't look at MNVs
     elif 'CCLE' in Dataset:
-        muts = pd.read_csv(DataDir + "CCLE_mutations.csv", sep=',', usecols = ['DepMap_ID','Variant_Classification']).rename(
+        muts = pd.read_csv(DataDir + "CCLE_mutations.csv", sep=',', usecols = ['DepMap_ID','Variant_Classification','Hugo_Symbol']).rename(
             columns={'DepMap_ID': 'Barcode'})
+        muts = muts[~muts['Variant_Classification'].isin(['In_Frame_Ins','In_Frame_Del'])] # Don't look at MNVs
     elif 'GTEX' in Dataset:
-        muts = pd.read_csv(DataDir + 'Table_mutations_all_Garcia_Nieto_et_al_Genome_Biology.tsv', usecols = ['gtexIds_samples']).rename(
+        muts = pd.read_csv(DataDir + 'Table_mutations_all_Garcia_Nieto_et_al_Genome_Biology.tsv', sep='\t', usecols = ['gtexIds_samples']).rename(
             columns={'gtexIds_samples':'Barcode'})
     return(muts)
+
+
 
 def AnnotateMutationalLoad(muts, MutType):
 	if MutType == 'KsKa': # just protein coding mutations
@@ -143,7 +149,24 @@ def AnnotateMutationalLoad(muts, MutType):
 		MutationRate = muts[muts['Deleterious_Meta'] == True].groupby('Barcode').size().reset_index().rename(columns={0:'MutLoad'})
 	elif MutType == 'SNV': # all SNV mutations
 		MutationRate = muts.groupby('Barcode').size().reset_index().rename(columns={0:'MutLoad'})
+	elif MutType == 'Nonsynonymous':
+		muts = muts[muts['Variant_Classification'] == 'Missense_Mutation']
+		MutationRate = muts.groupby('Barcode').size().reset_index().rename(columns={0:'MutLoad'})
+	elif MutType == 'Polyphen':
+		muts['PolyPhen'] = muts['PolyPhen'].str.split("(", expand=True)[0]
+		muts = muts[muts['PolyPhen'].isin(['probably_damaging', 'possibly_damaging'])]
+		MutationRate = muts.groupby('Barcode').size().reset_index().rename(columns={0:'MutLoad'})
+	elif MutType == 'NonsynonymousHE':
+		print('foo')
 	return(MutationRate)
+
+def GetHighlyExpressedGenes():
+    ''' Defined as having TPM greater than 1000 across all samples in GTEX.'''
+    OutDir='/labs/ccurtis2/tilk/scripts/cancer-HRI/Data/GeneSets/'
+    samp=pd.read_csv(OutDir + 'GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct.gz', skiprows=2, sep='\t')
+    samp['Name'] = samp['Name'].str.split('.', expand=True)[0]
+    genes = samp.set_index(['Description','Name'])
+    return(genes.loc[(genes > 500).all(axis=1)].reset_index()[['Description','Name']])
 
 
 def GetTumorPurity():
@@ -163,8 +186,17 @@ def GetTissueType(Dataset):
 	elif 'GTEX' in Dataset:
 		muts = pd.read_csv(DataDir + "Table_mutations_all_Garcia_Nieto_et_al_Genome_Biology.tsv", sep='\t', 
 		    usecols=['gtexIds_samples','tissue']).rename(columns={'gtexIds_samples': 'Barcode','tissue':'type'}).drop_duplicates()
-	elif 'CCLE' in dataset:
+	elif 'CCLE' in Dataset:
 		muts = pd.read_csv(DataDir + 'sample_info.csv', sep=',', usecols=[ 'disease', 'DepMap_ID']).rename(columns={'DepMap_ID': 'Barcode','disease':'type'})
 	return(muts)
 
     
+def GetNumberOfMutsAndCancerType(Dataset='TCGA'):
+	if Dataset == 'TCGA':
+		muts = GetMutations(Dataset='TCGA')
+		mut_rate = AnnotateMutationalLoad(muts, MutType='SNV')
+		tissue = GetTissueType(Dataset)[['Barcode','type']]
+		tissue.merge(mut_rate, left_on='Barcode' ,right_on='Barcode').to_csv(
+			os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE'
+		)
+
