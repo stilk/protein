@@ -6,7 +6,7 @@
 #
 
 library(DESeq2)
-
+library(dplyr)
 
 
 HT_Seq_Dir="/labs/ccurtis2/tilk/scripts/protein/Data/Raw/Expression/TCGA/HTSeq-Concatenated/"
@@ -27,10 +27,17 @@ GetAllSamples = function() {
 GetBarcodesOfInterest = function(Condition) {
   Samples = GetAllSamples()
   if (Condition == 'PanCancer') {
-      out = rbind( data.frame(Condition='high', Samples[Samples[c('MutLoad')] > 1000,]),
-             data.frame(Condition='low', Samples[Samples[c('MutLoad')] < 10,]))
-  } else if (Condition == 'CancerSpecific') {
-      print('not ready yet'); return('')
+      out = rbind( data.frame(Condition='high', Samples[Samples[c('MutLoad')] >= 10000,]),
+             data.frame(Condition='low', Samples[Samples[c('MutLoad')] <= 10,]))
+  } else if (Condition == 'PanCancerMatched') {
+    NumSamplesPerCancerType=5
+    out = rbind(data.frame(Condition='high', Samples %>% group_by(type) %>% top_n(NumSamplesPerCancerType, MutLoad) %>% arrange(MutLoad, .by_group = TRUE)),
+            data.frame(Condition='low', Samples %>% group_by(type) %>% top_n(-NumSamplesPerCancerType, MutLoad) %>% arrange(MutLoad, .by_group = TRUE)))
+    out = subset(out, ((out$Condition == 'low') & (out$MutLoad  <= 10)) | ((out$Condition == 'high') & (out$MutLoad >= 1000)))
+    NumSamples = as.data.frame.matrix(table(out[c('type','Condition')]))
+    NumSamples$TotalSamplesForCondition = NumSamples$low + NumSamples$high
+    CancerTypesWithMatchingSamples = row.names(NumSamples[NumSamples['TotalSamplesForCondition'] == (NumSamplesPerCancerType * 2),])
+    out = out[out$type %in% CancerTypesWithMatchingSamples,]
   }
   return(out)
 }
@@ -85,15 +92,14 @@ DoDGE <- function(SampleTable, Directory) {
 
 
 GetDGEResults = function(Condition) {
-  if (Condition == 'PanCancer') {
     Directory = paste0(DGE_Input, Condition)
-    #df = GetBarcodesOfInterest(Condition)
+    df = GetBarcodesOfInterest(Condition)
     #SeparateBarcodesIntoDirectoriesOfInterest(df[df$Condition == 'high',]$Barcode, paste0(Directory, '/high/'))
     #SeparateBarcodesIntoDirectoriesOfInterest(df[df$Condition == 'low',]$Barcode, paste0(Directory, '/low/'))
     SampleTable = GetSampleTable(Directory)
     Results = DoDGE(SampleTable, Directory)
     return(Results)
-  }
 }
 
+#write.table(GetDGEResults('PanCancerMatched'), paste0(DGE_Output, 'TCGA_PanCancerMatched_DGE.txt'), quote=FALSE)
 write.table(GetDGEResults('PanCancer'), paste0(DGE_Output, 'TCGA_PanCancer_DGE.txt'), quote=FALSE)
