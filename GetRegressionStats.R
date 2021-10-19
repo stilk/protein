@@ -2,6 +2,7 @@ GetPackages = function() {
     library(lme4)
     library(glmnet)
     library(lmerTest)
+    library(dplyr)
 }
 
 NormalizeValues = function(df) {
@@ -19,7 +20,7 @@ DoMixedEffectRegression = function(df) {
 }
 
 DoLinearRegression = function(df) {
-    model = lmer(Value ~ LogScore, data=df)
+    model = lm(NormalizedValue ~ LogScore, data=df)
     f = summary(model)$fstatistic
     pVal = pf(f[1],f[2],f[3],lower.tail=F) # p value for the overall fit of the model againt null that R2=0
     return(data.frame(summary(model)[9], summary(model)[6], summary(model)[4]$coefficients, pVal))
@@ -44,6 +45,8 @@ DoRegressionPerGene = function(df, RegressionType) {
             print(paste0("Couldn't calculate regression statistics for ", AllGenes[i]))
         })
     }
+    # Calculate adjusted p-values for multiple hypothesis testing
+    RegressionResults$adj.pval = p.adjust(RegressionResults$Pr...t.., method= 'fdr')
     return(RegressionResults)
 }
 
