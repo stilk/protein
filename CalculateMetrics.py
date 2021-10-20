@@ -18,6 +18,7 @@ def SetUpPlottingPackages():
     glmnet = importr('glmnet')
     lmertest = importr('lmerTest')
     data_table = importr('data.table')
+    dplyr = importr('dplyr')
     ro.r.source('/labs/ccurtis2/tilk/scripts/protein/GetRegressionStats.R') # Source R script for plotting
 
 
@@ -49,10 +50,11 @@ def GetRegressionStatsInput(Dataset, DataType, MutType):
     elif DataType == 'Expression':
         Values = GetExpressionData(Dataset)
     Muts = AnnotateMutationalLoad(GetMutations(Dataset), MutType=MutType)
+    Muts['NormalizedMutLoad'] = (Muts['MutLoad'] - Muts['MutLoad'].mean()) / Muts['MutLoad'].std()
     Purity = GetTumorPurity()
     Tissue = GetTissueType(Dataset)
     Stats = Values.merge(Muts, left_on='Barcode', right_on='Barcode')
-    Stats['LogScore'] = np.log10(Stats['MutLoad'] + 1)
+    #Stats['LogScore'] = np.log10(Stats['MutLoad'] + 1)
     if Dataset == 'TCGA':
         Covariates = Tissue.merge(Purity, left_on='Barcode', right_on='Barcode')
     else:
@@ -60,19 +62,22 @@ def GetRegressionStatsInput(Dataset, DataType, MutType):
     return(Stats.merge(Covariates, left_on='Barcode', right_on='Barcode'))
 
 
-def GetRegressionEstimates(Dataset, DataType, MutType='SNV', GeneSet=[]):
+def GetRegressionEstimates(Dataset, DataType, MutType='SNV', GeneSet=[], ByGene=True):
     SetUpPlottingPackages()
     df = GetRegressionStatsInput(Dataset, DataType, MutType)
     if len(GeneSet) != 0: # Subset to genes of interest
         df = df[df['GeneName'].isin(GeneSet)]
     R = ConvertPandasDFtoR(df)
-    if Dataset == 'TCGA':
-        return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'MixedEffect')))
-    elif Dataset == 'CCLE':
-        return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS')))
-    elif Dataset == 'GTEX':
-        return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS')))
-
+    if ByGene:
+        if Dataset == 'TCGA':
+            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'MixedEffect')))
+        elif Dataset == 'CCLE':
+            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS')))
+        elif Dataset == 'GTEX':
+            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS')))
+    else: # Do regression by gene group
+        if Dataset == 'TCGA':
+            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGroup(R)))
 
 def GetRegressionToGeneSetsOfInterest(Group, Dataset, DataType, MutType):
     Dir = os.getcwd() + '/GeneSets/'
@@ -81,17 +86,24 @@ def GetRegressionToGeneSetsOfInterest(Group, Dataset, DataType, MutType):
         set = pd.read_csv(Dir + 'Human_Chaperome_TableS1A_PMID_29293508', sep='\t').rename(columns={'Gene':'GeneName','Level2':'Group'})
     for GeneGroup in set['Group'].unique():
         GeneSet = set[set['Group'] == GeneGroup]['GeneName']
-        RegressionResults = RegressionResults.append(GetRegressionEstimates(Dataset, DataType, MutType, GeneSet).assign(GeneGroup = GeneGroup))
+        RegressionResults = RegressionResults.append(GetRegressionEstimates(Dataset, DataType, MutType, GeneSet, ByGene=False).assign(GeneGroup = GeneGroup))
     return(RegressionResults)
 
 
-GetHighlyExpressedGenes().to_csv('/labs/ccurtis2/tilk/scripts/protein/GeneSets/HighlyExpressed_GTEX_GreaterThan500TPM.txt')
+
+GetRegressionEstimates(Dataset='TCGA', DataType='Expression', MutType='SNV', GeneSet=[], ByGene=True).to_csv(
+    '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/StandardizedExpressionMixedEffectRegressionEstimatesTCGA')
+
+
+
+#GetHighlyExpressedGenes().to_csv('/labs/ccurtis2/tilk/scripts/protein/GeneSets/HighlyExpressed_GTEX_GreaterThan500TPM.txt')
 
 # GetRegressionToGeneSetsOfInterest(Group='Chaperome', Dataset='TCGA', DataType='Expression', MutType='SNV').to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/TCGA_Expression_Chaperome_SNVs.txt')
+#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/GroupedRegression_TCGA_Expression_Chaperome_SNVs.txt')
 
 # GetRegressionToGeneSetsOfInterest(Group='Chaperome', Dataset='TCGA', DataType='Expression', MutType='Nonsynonymous').to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/TCGA_Expression_Chaperome_Nonsynonymous.txt')
+#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/GroupedRegression_TCGA_Expression_Chaperome_Nonsynonymous.txt')
 
 # GetRegressionToGeneSetsOfInterest(Group='Chaperome', Dataset='TCGA', DataType='Expression', MutType='Polyphen').to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/TCGA_Expression_Chaperome_Polyphen.txt')
+#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/GroupedRegression_TCGA_Expression_Chaperome_Polyphen.txt')
+
