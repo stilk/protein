@@ -21,3 +21,7 @@ CCLE: Mutation calls were downloaded from DepMap (Oct 4 2021) Version 21Q3
     https://portal.gdc.cancer.gov/projects/MMRF-COMMPASS
     https://gdc.cancer.gov/about-gdc/contributed-genomic-data-cancer-research/foundation-medicine/multiple-myeloma-research-foundation-mmrf
     	
+## Stability ##
+
+Mutfunc was used to match mutation calls to protein stability from here:
+http://ftp.ebi.ac.uk/pub/databases/mutfunc/mutfunc_v2/human/
