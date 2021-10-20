@@ -116,6 +116,10 @@ def RunVEPToGetDeleteriousScores():
 		VEPOutput = pd.read_csv(os.getcwd() + "/Data/Raw/Mutations/CCLE/CCLE_VEP_Output")
 	return(pd.concat([muts, VEPOutput], axis=1))
 
+def GetStability(Dataset):
+	DataDir = "/labs/ccurtis2/tilk/scripts/protein/Data/MutFunc/"
+	if Dataset == 'TCGA':
+		return(pd.read_csv(DataDir + 'TCGA_ProteinStability_HomologyModel'))
 
 def GetMutations(Dataset):
     DataDir = os.getcwd() + '/Data/Raw/Mutations/' + Dataset + '/'
