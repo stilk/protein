@@ -15,7 +15,12 @@ NormalizeValues = function(df) {
 DoMixedEffectRegression = function(df) {
     # Does mixed effect regression of Values by LogScore (i.e. mutational load) while
     # controlling for cancer type and tumor purity. 
-    model = lmer(NormalizedValue ~ LogScore + (1 | type) + (1 |purity), data=df)
+    model = lmer(NormalizedValue ~ NormalizedMutLoad + (1 | type) + (1 |purity), data=df)
+    return(data.frame(summary(model)[10]$coefficients, summary(model)[11]))
+}
+
+DoMixedEffectRegressionWithGeneName = function(df) {
+    model = lmer(NormalizedValue ~ LogScore + (1 | type) + (1 |purity) + GeneName, data=df)
     return(data.frame(summary(model)[10]$coefficients, summary(model)[11]))
 }
 
@@ -51,7 +56,16 @@ DoRegressionPerGene = function(df, RegressionType) {
 }
 
 
-# DoRegressionWithinCancerType = function(df) {
-
-
-# }
+DoRegressionPerGroup = function(df) {
+    df = data.frame(df %>% group_by(GeneName) %>% do(data.frame(NormalizeValues(.))))    
+    tryCatch( 
+    { RegressionResults = DoMixedEffectRegressionWithGeneName(df)
+    }, 
+        error=function(error_message) { 
+        message(error_message) # Print error statement
+        print(paste0("Couldn't calculate regression statistics for group."))
+    })
+    # Calculate adjusted p-values for multiple hypothesis testing
+    RegressionResults$adj.pval = p.adjust(RegressionResults$Pr...t.., method= 'fdr')
+    return(RegressionResults)
+}
