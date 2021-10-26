@@ -33,6 +33,59 @@ def GetExpressionData(Dataset, GeneSet=[]):
         return(df)
 
 
+def GetAlternativeSplicingData(AS='RI', BarcodesOfInt=[]):
+DataDir = '/labs/ccurtis2/tilk/09_PROTEIN/splicingAnalysis/spliceSeq/newDownload/'
+ListOfFiles = glob.glob(os.path.join(DataDir, "PSI_download_*zip"))
+OutDF = pd.DataFrame()
+DataColumns = ['symbol', 'as_id', 'splice_type', 'exons', 'from_exon', 'to_exon']
+	# Read and merge alternative splicing calls for each cancer type
+	for FileName in ListOfFiles:
+		CancerType = pd.read_csv(FileName, sep='\t')
+		CancerType = CancerType[CancerType['splice_type'] == AS] # Select AS call types (i.e intron retention, etc)
+		if len(BarcodesOfInt) == 0: # Only merge if barcodes of interest exist in df
+			BarcodesOfInt = CancerType.columns[CancerType.columns.str.contains('TCGA')]
+		ColumnsToKeep = pd.Series(CancerType.columns)[pd.Series(CancerType.columns).isin(BarcodesOfInt)].tolist() + DataColumns
+		CancerType = CancerType[ColumnsToKeep]
+		if (len(OutDF) == 0):
+			OutDF = CancerType
+		else:
+			OutDF = OutDF.merge(CancerType, left_on=DataColumns, right_on=DataColumns, how='outer')
+		print('Done analyzing: ' + FileName)
+	splice = OutDF.set_index(DataColumns)
+	# Remove AS events if more than 25% of samples have a missing call
+	PercentMissing = splice.isnull().sum(axis=1).reset_index()[0]/len(splice.columns)
+	splice = splice.reset_index().assign(pct_missing = PercentMissing)
+	splice = splice[splice['pct_missing'] < 0.25]
+	# Convert from matrix to long format for consistency with regression functions
+	long = splice.set_index(['as_id'])[splice.columns[splice.columns.str.contains('TCGA')].tolist()].unstack().reset_index()
+	long = long.merge(splice[['symbol','as_id']], left_on='as_id',right_on='as_id').rename(columns={
+		'level_0':'Barcode', 0:'Value','symbol':'GeneName'})
+	long['Barcode'] = long['Barcode'].str.replace('_','-')
+	long = long[~long['Barcode'].str.contains('Norm')].dropna()
+	long['GeneName'] = long['GeneName'] + '_' + long['as_id'].astype(str) # Add AS Id to gene name to distinguish separate events
+	return(long)
+
+
+
+
+
+def GetProteinExpressionData(Dataset, GeneSet=[]):
+	'''
+	Returns a data frame columns with (mainly) 3 columns: Barcode, and value, geneName.
+	Optional argument of geneSet, where you get protein expression values only for a list of genes.
+	'''
+	if Dataset == 'CCLE':
+		protein = pd.read_csv('/labs/ccurtis2/tilk/07_PRISM/00_RawData/Protein/protein_quant_current_normalized.csv.gz', sep=',')
+		protein = protein.drop(['Protein_Id','Description','Group_ID','Uniprot','Uniprot_Acc'], axis=1).set_index('Gene_Symbol').transpose().unstack().reset_index().rename(columns={'level_1':'Protein_Id',0:'ProteinQuant'})
+		protein[['Protein_Id','Replicate']] = protein.Protein_Id.str.rsplit('_', 1, expand=True) ### split into replicates and IDs
+		protein = protein[protein['Replicate'] != 'Peptides'] ### remove weird samples for now 
+		info = pd.read_csv('/labs/ccurtis2/tilk/07_PRISM/00_RawData/SNV/sample_info.csv', sep=',')[['CCLE_Name','DepMap_ID']]
+		df = protein.merge(info, left_on='Protein_Id',right_on='CCLE_Name').dropna().rename(columns={'DepMap_ID':'Barcode','Gene_Symbol': 'GeneName','ProteinQuant':'Value'})
+		if len(GeneSet) != 0:
+				df = df[df['GeneName'].isin(GeneSet)]
+		return(df)
+
+
 def GetDrugResponseData(Screen):
     '''
     Reads in drug screen data (PRISM) from DepMap.
@@ -96,25 +149,35 @@ def DownloadVEPIndex():
 		return(print('Index already created.'))
 
 
-def RunVEPToGetDeleteriousScores():
+def RunVEPToGetDeleteriousScores(Dataset):
 	'''
 	Runs VEP (Variant Effect Predictor) to obtain polyphen/sift scores for CCLE
 	Required columns to run VEP are: Chromosome, Start, Stop, Ref/Alt, Strand
 	'''
-	muts = pd.read_csv( os.getcwd() + "/Data/Raw/Mutations/CCLE/CCLE_mutations.csv")
+	if Dataset == 'CCLE':
+		muts = pd.read_csv( os.getcwd() + "/Data/Raw/Mutations/CCLE/CCLE_mutations.csv")
+		muts['Ref/Alt'] = muts['Reference_Allele'] + '/' + muts['Tumor_Seq_Allele1']
+	elif Dataset == 'GTEX':
+		muts = GetMutations(Dataset='GTEX')
+		muts = muts.rename(columns={'chr':'Chromosome','pos': 'Start_position'})
+		muts['Chromosome'] = muts['Chromosome'].str.replace('chr','')
+		muts['Start_position'] = muts['Start_position'].astype(int)
+		muts['Ref/Alt'] = muts['ref'] + '/' + muts['alt']
+		muts['End_position'] = muts['Start_position'] # Just SNVs so positions are the same
+		muts['Strand'] = '+' # Everything is positive stranded
 	# Generate VEP Input to file
-	muts['Ref/Alt'] = muts['Reference_Allele'] + '/' + muts['Tumor_Seq_Allele1']
 	VEPInput = muts[['Chromosome','Start_position','End_position','Ref/Alt','Strand']]
-	VEPInput.to_csv(os.getcwd() + "/Data/Raw/Mutations/CCLE/CCLE_VEP_Input" , sep= ' ', index=False, header=None)
+	VEPInput.to_csv(os.getcwd() + "/Data/Raw/Mutations/" + Dataset + "/" + Dataset + "_VEP_Input" , sep= ' ', index=False, header=None)
 	# Run VEP
-	if os.path.isfile(os.getcwd() + "/Data/Raw/Mutations/CCLE/CCLE_VEP_Output") == False: # If VEP output doesn't exist yet
-		#DownloadVEPIndex()
-		subprocess.call(['bash', '-c', 
-			'vep -e -v --database --dir /labs/ccurtis2/tilk/software/vep/ --species homo_sapiens -i ' + 
-			os.getcwd() + "/Data/Raw/Mutations/CCLE/CCLE_VEP_Input" + ' -o ' + os.getcwd() + "/Data/Raw/Mutations/CCLE/CCLE_VEP_Output" +
-			'--sift --polyphen --format guess --force_overwrite'])
-		VEPOutput = pd.read_csv(os.getcwd() + "/Data/Raw/Mutations/CCLE/CCLE_VEP_Output")
-	return(pd.concat([muts, VEPOutput], axis=1))
+	#if os.path.isfile(os.getcwd() + "/Data/Raw/Mutations/" + Dataset + "/" + Dataset + "_VEP_Output") == False: # If VEP output doesn't exist yet
+	#DownloadVEPIndex()
+	subprocess.call(['bash', '-c', 
+		'vep -e -v --database --dir /labs/ccurtis2/tilk/software/vep/ --species homo_sapiens -i ' + 
+		os.getcwd() + "/Data/Raw/Mutations/" + Dataset + '/' + Dataset + "_VEP_Input" + ' -o ' + os.getcwd() + "/Data/Raw/Mutations/" 
+		+ Dataset + "/" + Dataset + "_VEP_Output " + '--sift --polyphen --format guess --force_overwrite'])
+	#VEPOutput = pd.read_csv(os.getcwd() + "/Data/Raw/Mutations/" + Dataset + "/" + Dataset + "_VEP_Output")
+	print('Done!')
+	#return(pd.concat([muts, VEPOutput], axis=1))
 
 def GetStability(Dataset):
 	DataDir = "/labs/ccurtis2/tilk/scripts/protein/Data/MutFunc/"
@@ -133,7 +196,7 @@ def GetMutations(Dataset):
             columns={'DepMap_ID': 'Barcode'})
         muts = muts[~muts['Variant_Classification'].isin(['In_Frame_Ins','In_Frame_Del'])] # Don't look at MNVs
     elif 'GTEX' in Dataset:
-        muts = pd.read_csv(DataDir + 'Table_mutations_all_Garcia_Nieto_et_al_Genome_Biology.tsv', sep='\t', usecols = ['gtexIds_samples']).rename(
+        muts = pd.read_csv(DataDir + 'Table_mutations_all_Garcia_Nieto_et_al_Genome_Biology.tsv', sep='\t').rename(
             columns={'gtexIds_samples':'Barcode'})
     return(muts)
 
@@ -198,9 +261,11 @@ def GetTissueType(Dataset):
 def GetNumberOfMutsAndCancerType(Dataset='TCGA'):
 	if Dataset == 'TCGA':
 		muts = GetMutations(Dataset='TCGA')
-		mut_rate = AnnotateMutationalLoad(muts, MutType='SNV')
+		mut_rate = AnnotateMutationalLoad(muts, MutType='KsKa')
 		tissue = GetTissueType(Dataset)[['Barcode','type']]
 		tissue.merge(mut_rate, left_on='Barcode' ,right_on='Barcode').to_csv(
 			os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE'
 		)
 
+
+#RunVEPToGetDeleteriousScores(Dataset='GTEX').to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Raw/Mutations/GTEX/GTEX_Mutations_Polyphen_Annotated', sep='\t')
