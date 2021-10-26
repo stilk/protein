@@ -1,4 +1,3 @@
-library('gprofiler2')
 
 
 ReadDGEResults = function(Category) {
@@ -10,24 +9,40 @@ ReadDGEResults = function(Category) {
     }
 }
 
+AddPercentileRank = function(df) {
+    df$PvaluePercentileRank = trunc(rank(df$pVal))/length(df$pVal)
+    out = rbind(
+        data.frame(EstimatePercentileRank = trunc(rank(df[df['Estimate'] > 0,]$Estimate))/length(df[df['Estimate'] > 0,]$Estimate), 
+        Sign = 'PositivePercentileRank', df[df['Estimate'] > 0,]), 
+        data.frame(EstimatePercentileRank = trunc(rank(df[df['Estimate'] < 0,]$Estimate))/length(df[df['Estimate'] < 0,]$Estimate), 
+        Sign = 'NegativePercentileRank', df[df['Estimate'] < 0,])
+    )
+    return(out)
+}
+
+
+
 ReadRegressionResults = function(Category) {
     Dir="/labs/ccurtis2/tilk/scripts/protein/Data/Regression/"
     if (Category == 'TCGA') {
-        df = read.table(paste0(Dir, 'tcga_expression_whole_genome.txt'), sep=',', header=TRUE)
+        df = read.table(paste0(Dir, 'ExpressionMixedEffectRegressionEstimatesKsKaTCGA'), sep=',', header=TRUE)
     } else if (Category == 'CCLE') {
-        df = read.table(paste0(Dir, 'ExpressionOLSRegressionEstimatesCCLE'), sep=',', header=TRUE)
-        df$adj.pval = p.adjust(df$Pr...t.., method= 'fdr')
+        #df = read.table(paste0(Dir, 'ExpressionOLSRegressionEstimatesCCLE'), sep=',', header=TRUE)
+        df = read.table(paste0(Dir, 'ExpressionOLSRegressionEstimatesKsKaCCLE'), sep=',', header=TRUE)
+        return(df)
     } else if (Category == 'RNAiCCLE') {
-        df = read.table(paste0(Dir, 'RNAiOLSRegressionEstimatesCCLE'), sep=',', header=TRUE)
-        df$adj.pval = p.adjust(df$Pr...t.., method= 'fdr')
+        df = read.table(paste0(Dir, 'RNAiOLSRegressionEstimatesKsKaCCLE'), sep=',', header=TRUE) 
+        #df = read.table(paste0(Dir, 'StandardizedRNAiOLSRegressionEstimatesKsKaCCLE'), sep=',', header=TRUE)
     }
+    # Calculate adjusted p-values for multiple hypothesis testing
     df$Coefficient = gsub('[[:digit:]]+', '', df$X)
     df = df[df['Coefficient'] == 'LogScore',]
+    df$adj.pval = p.adjust(df$Pr...t.., method= 'fdr')
     return(df)
 }
 
 GetGeneSets = function(Category) {
-    NumberGenesToSubset = 5111
+    NumberGenesToSubset = 5330
     if (Category == 'PanCancerDGE') {
         df = ReadDGEResults(Category)
         # Choose only significant genes that are upregulated in high TMB tumors
@@ -59,23 +74,29 @@ GetOverlapOfGeneSets = function() {
 
 
 DoGeneSetEnrichment = function(GeneSet) {
-    return(gost(GeneSet)$result)
+    result = data.frame(gost(GeneSet)$result)
+    return(result[c('source','term_name','p_value')])
 }
 
 
 
 
-foo = DoGeneSetEnrichment(GetGeneSets('PanCancerMatchedDGE'))
+# foo = DoGeneSetEnrichment(GetGeneSets('PanCancerMatchedDGE'))
 
-foo = DoGeneSetEnrichment(GetGeneSets('PanCancerDGE'))
+# foo = DoGeneSetEnrichment(GetGeneSets('PanCancerDGE'))
 
-foo = DoGeneSetEnrichment(GetGeneSets('ExpressionTCGA'))
+# foo = DoGeneSetEnrichment(GetGeneSets('ExpressionTCGA'))
 
-foo = DoGeneSetEnrichment(GetGeneSets('ExpressionCCLE'))
+# foo = DoGeneSetEnrichment(GetGeneSets('RNAiCCLE'))
+
+# foo = DoGeneSetEnrichment(GetGeneSets('ExpressionCCLE'))
 
 
-foo = DoGeneSetEnrichment(GetOverlapOfGeneSets)
+# foo = DoGeneSetEnrichment(GetGeneSets('RNAiCCLE'))
 
-foo[foo['source'] == 'CORUM',]$term_name
 
-foo[foo['source'] == 'REAC',]$term_name
+# foo = DoGeneSetEnrichment(GetOverlapOfGeneSets())
+
+# foo[foo['source'] == 'CORUM',]$term_name
+
+# foo[foo['source'] == 'REAC',]$term_name
