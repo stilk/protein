@@ -42,7 +42,7 @@ ReadRegressionResults = function(Category) {
 }
 
 GetGeneSets = function(Category) {
-    NumberGenesToSubset = 5330
+    NumberGenesToSubset = 1000000
     if (Category == 'PanCancerDGE') {
         df = ReadDGEResults(Category)
         # Choose only significant genes that are upregulated in high TMB tumors
@@ -56,6 +56,9 @@ GetGeneSets = function(Category) {
     } else if (Category == 'ExpressionTCGA') {
         df = ReadRegressionResults('TCGA')
         GeneSet = df[(df['Estimate'] > 0) & (df['adj.pval'] < 0.05),]$GeneName
+    } else if (Category == 'ExpressionTCGALow') {
+        df = ReadRegressionResults('TCGA')
+        GeneSet = df[(df['Estimate'] < 0) & (df['adj.pval'] < 0.05),]$GeneName
     } else if (Category == 'ExpressionCCLE') {
         df = ReadRegressionResults('CCLE')
         GeneSet = df[(df['Estimate'] > 0) & (df['adj.pval'] < 0.05),]$GeneName
@@ -74,6 +77,7 @@ GetOverlapOfGeneSets = function() {
 
 
 DoGeneSetEnrichment = function(GeneSet) {
+    library('gprofiler2')
     result = data.frame(gost(GeneSet)$result)
     return(result[c('source','term_name','p_value')])
 }
@@ -86,6 +90,8 @@ DoGeneSetEnrichment = function(GeneSet) {
 # foo = DoGeneSetEnrichment(GetGeneSets('PanCancerDGE'))
 
 # foo = DoGeneSetEnrichment(GetGeneSets('ExpressionTCGA'))
+# foo = DoGeneSetEnrichment(GetGeneSets('ExpressionTCGA_Low'))
+
 
 # foo = DoGeneSetEnrichment(GetGeneSets('RNAiCCLE'))
 
