@@ -33,37 +33,6 @@ def GetExpressionData(Dataset, GeneSet=[]):
         return(df)
 
 
-def GetAlternativeSplicingData(AS='RI', BarcodesOfInt=[]):
-DataDir = '/labs/ccurtis2/tilk/09_PROTEIN/splicingAnalysis/spliceSeq/newDownload/'
-ListOfFiles = glob.glob(os.path.join(DataDir, "PSI_download_*zip"))
-OutDF = pd.DataFrame()
-DataColumns = ['symbol', 'as_id', 'splice_type', 'exons', 'from_exon', 'to_exon']
-	# Read and merge alternative splicing calls for each cancer type
-	for FileName in ListOfFiles:
-		CancerType = pd.read_csv(FileName, sep='\t')
-		CancerType = CancerType[CancerType['splice_type'] == AS] # Select AS call types (i.e intron retention, etc)
-		if len(BarcodesOfInt) == 0: # Only merge if barcodes of interest exist in df
-			BarcodesOfInt = CancerType.columns[CancerType.columns.str.contains('TCGA')]
-		ColumnsToKeep = pd.Series(CancerType.columns)[pd.Series(CancerType.columns).isin(BarcodesOfInt)].tolist() + DataColumns
-		CancerType = CancerType[ColumnsToKeep]
-		if (len(OutDF) == 0):
-			OutDF = CancerType
-		else:
-			OutDF = OutDF.merge(CancerType, left_on=DataColumns, right_on=DataColumns, how='outer')
-		print('Done analyzing: ' + FileName)
-	splice = OutDF.set_index(DataColumns)
-	# Remove AS events if more than 25% of samples have a missing call
-	PercentMissing = splice.isnull().sum(axis=1).reset_index()[0]/len(splice.columns)
-	splice = splice.reset_index().assign(pct_missing = PercentMissing)
-	splice = splice[splice['pct_missing'] < 0.25]
-	# Convert from matrix to long format for consistency with regression functions
-	long = splice.set_index(['as_id'])[splice.columns[splice.columns.str.contains('TCGA')].tolist()].unstack().reset_index()
-	long = long.merge(splice[['symbol','as_id']], left_on='as_id',right_on='as_id').rename(columns={
-		'level_0':'Barcode', 0:'Value','symbol':'GeneName'})
-	long['Barcode'] = long['Barcode'].str.replace('_','-')
-	long = long[~long['Barcode'].str.contains('Norm')].dropna()
-	long['GeneName'] = long['GeneName'] + '_' + long['as_id'].astype(str) # Add AS Id to gene name to distinguish separate events
-	return(long)
 
 
 
@@ -86,29 +55,46 @@ def GetProteinExpressionData(Dataset, GeneSet=[]):
 		return(df)
 
 
-def GetDrugResponseData(Screen):
-    '''
-    Reads in drug screen data (PRISM) from DepMap.
-    Args: @screen = a string for which dataset to read in, `primary` or `secondary` screen
-    '''
-    DataDir = os.getcwd() + "/Data/Raw/Drug/"
-    drug = pd.read_csv(DataDir + Screen + '-screen-replicate-collapsed-logfold-change.csv', sep=',').rename(
-        columns={'Unnamed: 0':'Barcode'}).melt(id_vars='Barcode')  
-    drug[['column_name','dose','screenType']] = drug['variable'].str.split('::', expand=True)[[0,1,2]]
-    info = pd.read_csv(DataDir + Screen + '-screen-replicate-collapsed-treatment-info.csv', sep=',')
-    info = info[['column_name','name']].drop_duplicates()
-    drug = info.merge(drug, left_on='column_name', right_on='variable')
-    #return(drug[druge['column_name_y'].isin(pd.Series(drugNames).str.split('::', expand=True)[0])])
-    return(drug)
+def GetDrugResponseData(Screen='primary'):
+	'''
+	Reads in drug screen data (PRISM) from DepMap.
+	Args: @screen = a string for which dataset to read in, `primary` or `secondary` screen
+	'''
+	DataDir = os.getcwd() + "/Data/Raw/Drug/"
+	drug = pd.read_csv(DataDir + Screen + '-screen-replicate-collapsed-logfold-change.csv', sep=',').rename(
+		columns={'Unnamed: 0':'Barcode'}).melt(id_vars='Barcode')  
+	drug[['column_name','dose','screenType']] = drug['variable'].str.split('::', expand=True)[[0,1,2]]
+	info = pd.read_csv(DataDir + Screen + '-screen-replicate-collapsed-treatment-info.csv', sep=',')
+	DrugTargets =  pd.concat([pd.DataFrame({'broad_id': info[info['moa'] == 'protein synthesis inhibitor']['broad_id'], 'Group': 'Translation', 'subgroup':'Protein Synthesis Inhibitor'}),
+							pd.DataFrame({'broad_id': info[info['moa'] == 'RNA synthesis inhibitor']['broad_id'], 'Group': 'Translation', 'subgroup':'RNA Synthesis Inhibitor'}),
+							pd.DataFrame({ 'broad_id': info[(info['target'].str.contains('HSP90', na=False)) & (info['moa'].str.contains('HSP inhibitor', na=False))]['broad_id'],  'Group': 'Chaperone', 'subgroup':'HSP90 Inhibitor'}),
+							pd.DataFrame({ 'broad_id': info[(info['moa'].str.contains('proteasome', na=False))]['broad_id'],  'Group': 'Proteasome', 'subgroup':'Proteasome Inhibitor'}),
+							pd.DataFrame({ 'broad_id': info[(info['moa'] == 'ubiquitin specific protease inhibitor')]['broad_id'],  'Group': 'Ubiquitin', 'subgroup':'Ubiquitin-Specific Proteasome Inhibitor'})
+	])
+	info = info[['column_name','name']].drop_duplicates()
+	drug = info.merge(drug, left_on='column_name', right_on='variable')
+	drug = drug.merge(DrugTargets, left_on='column_name_y', right_on='broad_id').rename(columns={'value':'Value'})
+	#drugInfo = pd.read_csv('/labs/ccurtis2/tilk/07_PRISM/00_RawData/Viability/DrugScreen/PrimaryScreen/primary-screen-replicate-collapsed-treatment-info.csv', sep=',')
+	#drugTargets = drugInfo.set_index(['broad_id','name'])['target'].str.split(', ', expand=True).reset_index().melt(id_vars=['broad_id', 'name']).dropna()
+	#return(drug[druge['column_name_y'].isin(pd.Series(drugNames).str.split('::', expand=True)[0])])
+	return(drug)
 
 
 def GetRNAiResponseData(GeneSet = []):
+    '''
+    Not all cancer cell lines were profiled evenly in the shRNA screen. Only reports RNAi data for
+    genes that have at least half of the median number of barcodes cell lines profiled. 
+    '''
     DataDir = os.getcwd() + "/Data/Raw/RNAi/"
-    ko = pd.read_csv( DataDir + 'D2_combined_gene_dep_scores.csv', sep=',')
+    ko = pd.read_csv( DataDir + 'D2_Achilles_gene_dep_scores.csv', sep=',')
+	#ko = pd.read_csv( DataDir + 'D2_DRIVE_gene_dep_scores.csv', sep=',')
     ko = pd.melt(ko, id_vars=['Unnamed: 0']).rename(columns={'Unnamed: 0': 'GeneName','variable':'Barcode','value':'Value'})
     info = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/CCLE/sample_info.csv', sep=',')[['CCLE_Name','DepMap_ID']]
     ko = ko.merge(info, left_on='Barcode',right_on='CCLE_Name').dropna()[['GeneName','Value','DepMap_ID']].rename(columns={'DepMap_ID':'Barcode'})
     ko['GeneName'] = ko['GeneName'].str.split(' ', expand=True)[0]
+    #NumBarcodesScreened = ko.groupby(['GeneName']).size().reset_index().rename(columns={0:'NumBarcodesScreened'})
+    #ko = ko.merge(NumBarcodesScreened, left_on='GeneName', right_on='GeneName')
+    #ko = ko[ko['NumBarcodesScreened'] > ko['NumBarcodesScreened'].median()/2] 
     if len(GeneSet) != 0:
         ko = ko[ko['GeneName'].isin(GeneSet)]
     return(ko)		
@@ -266,6 +252,22 @@ def GetNumberOfMutsAndCancerType(Dataset='TCGA'):
 		tissue.merge(mut_rate, left_on='Barcode' ,right_on='Barcode').to_csv(
 			os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE'
 		)
+
+
+def GetTotalNMDFraction():
+	nmd = pd.read_csv('/labs/ccurtis2/tilk/09_PROTEIN/splicingAnalysis/NMD/ncomms15943-s2.txt', sep='\t', skiprows=1)
+	mutrate = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE', sep=',')
+	drivers = pd.read_csv('/labs/ccurtis2/tilk/scripts/cancer-HRI/Data/GeneSets/drivers_Bailey2018.txt', header=None)[0]
+	nmd['driver'] = nmd['gene'].isin(drivers)
+	mutrate = mutrate.merge(nmd, right_on='sample', left_on='Barcode')
+	mutrate['xbin'] = pd.cut(mutrate['MutLoad'], bins=[0,10,100,1000,30000])
+	nmd = mutrate.groupby(['xbin','driver'])['prediction'].value_counts().unstack().reset_index().replace(np.nan, 0)
+	nmd['fraction'] = nmd['NMD-elicit']/(nmd['NMD-escape'] + nmd['NMD-elicit'])
+
+
+
+
+
 
 
 #RunVEPToGetDeleteriousScores(Dataset='GTEX').to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Raw/Mutations/GTEX/GTEX_Mutations_Polyphen_Annotated', sep='\t')
