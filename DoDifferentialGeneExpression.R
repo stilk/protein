@@ -27,17 +27,24 @@ GetAllSamples = function() {
 GetBarcodesOfInterest = function(Condition) {
   Samples = GetAllSamples()
   if (Condition == 'PanCancer') {
-      out = rbind( data.frame(Condition='high', Samples[Samples[c('MutLoad')] >= 10000,]),
-             data.frame(Condition='low', Samples[Samples[c('MutLoad')] <= 10,]))
+      out = rbind( data.frame(Condition='high', Samples[Samples[c('MutLoad')] > 1000,]),
+             data.frame(Condition='low', Samples[Samples[c('MutLoad')] < 10,]))
   } else if (Condition == 'PanCancerMatched') {
-    NumSamplesPerCancerType=5
-    out = rbind(data.frame(Condition='high', Samples %>% group_by(type) %>% top_n(NumSamplesPerCancerType, MutLoad) %>% arrange(MutLoad, .by_group = TRUE)),
-            data.frame(Condition='low', Samples %>% group_by(type) %>% top_n(-NumSamplesPerCancerType, MutLoad) %>% arrange(MutLoad, .by_group = TRUE)))
-    out = subset(out, ((out$Condition == 'low') & (out$MutLoad  <= 10)) | ((out$Condition == 'high') & (out$MutLoad >= 1000)))
+    Samples$Low = (Samples$MutLoad <= 50)
+    Samples$High = (Samples$MutLoad >= 1000)
+    Samples = subset(Samples, (Samples$Low == TRUE) | (Samples$High == TRUE))
+    Samples$Condition = ifelse(Samples$Low == 'TRUE','Low', 'High')
     NumSamples = as.data.frame.matrix(table(out[c('type','Condition')]))
-    NumSamples$TotalSamplesForCondition = NumSamples$low + NumSamples$high
-    CancerTypesWithMatchingSamples = row.names(NumSamples[NumSamples['TotalSamplesForCondition'] == (NumSamplesPerCancerType * 2),])
-    out = out[out$type %in% CancerTypesWithMatchingSamples,]
+    NumSamples = cbind(data.frame(MaxSamplesPerBothGroup = apply(NumSamples, 1, FUN = min, na.rm = TRUE)),
+                            data.frame(type=row.names(data.frame(apply(NumSamples, 1, FUN = min, na.rm = TRUE)))))
+    Samples = merge(Samples, NumSamples, by='type', all.x=TRUE)
+    Samples = subset(Samples, Samples$MaxSamplesPerBothGroup != 0 )
+    # Select maximum # of barcodes for each cancer type that match conditions for low and high
+    out = data.frame(
+            rbind(Samples %>% filter(Condition == "High") %>% group_by(type, MaxSamplesPerBothGroup) %>% top_n(MaxSamplesPerBothGroup, MutLoad) %>% arrange(MutLoad, .by_group = TRUE),
+            Samples %>% filter(Condition == "Low") %>% group_by(type, MaxSamplesPerBothGroup) %>% top_n(-MaxSamplesPerBothGroup, MutLoad) %>% arrange(MutLoad, .by_group = TRUE)))
+    # For ties of mut load sample one randomly that meets condition
+    out = data.frame(out %>% group_by(Condition, type, MaxSamplesPerBothGroup) %>% filter(1:n() <= MaxSamplesPerBothGroup)) 
   }
   return(out)
 }
@@ -101,5 +108,5 @@ GetDGEResults = function(Condition) {
     return(Results)
 }
 
-#write.table(GetDGEResults('PanCancerMatched'), paste0(DGE_Output, 'TCGA_PanCancerMatched_DGE.txt'), quote=FALSE)
+# write.table(GetDGEResults('PanCancerMatched'), paste0(DGE_Output, 'TCGA_PanCancerMatched_DGE.txt'), quote=FALSE)
 write.table(GetDGEResults('PanCancer'), paste0(DGE_Output, 'TCGA_PanCancer_DGE.txt'), quote=FALSE)
