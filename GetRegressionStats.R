@@ -1,9 +1,9 @@
-GetPackages = function() {
-    library(lme4)
-    library(glmnet)
-    library(lmerTest)
-    library(dplyr)
-}
+
+library(lme4)
+library(glmnet)
+library(lmerTest)
+library(dplyr)
+
 
 NormalizeValues = function(df) {
     # Z scores expression values of each gene so that they're normally distributed
@@ -28,11 +28,27 @@ DoMixedEffectRegressionWithGeneName = function(df) {
     return(data.frame(summary(model)[10]$coefficients, summary(model)[11]))
 }
 
+
+DoOLSRegressionWithGeneName = function(df, NormalizeY) {
+    if (NormalizeY) {
+        model = lm(NormalizedValue ~ LogScore + GeneName, data=df)
+    } else  {
+        model = lm(Value ~ LogScore + GeneName, data=df)
+    }
+    f = summary(model)$fstatistic
+    pVal = pf(f[1],f[2],f[3],lower.tail=F) # p value for the overall fit of the model againt null that R2=0
+    return(data.frame(summary(model)[9], summary(model)[6], summary(model)[4]$coefficients, pVal))
+}
+
 DoLinearRegression = function(df, NormalizeY) {
     if (NormalizeY) {
+        if(!("NormalizedValue" %in% names(df))) { # If normalized values don't exist in dataframe, normalize vals
+           df = NormalizeValues(df)
+        }
+        df = NormalizeValues(df)
         model = lm(NormalizedValue ~  LogScore, data=df)
     } else {
-        model = lm(Value ~  LogScore, data=df)
+        model = lm(Value ~ LogScore, data=df)
     }
     f = summary(model)$fstatistic
     pVal = pf(f[1],f[2],f[3],lower.tail=F) # p value for the overall fit of the model againt null that R2=0
@@ -62,10 +78,18 @@ DoRegressionPerGene = function(df, RegressionType, NormalizeY) {
 }
 
 
-DoRegressionPerGroup = function(df) {
-    df = data.frame(df %>% group_by(GeneName) %>% do(data.frame(NormalizeValues(.))))    
+DoRegressionPerGroup = function(df, RegressionType, NormalizeY) {
+    if (NormalizeY) {
+        print('wrong')
+        df = data.frame(df %>% group_by(GeneName) %>% do(data.frame(NormalizeValues(.))))    
+    }
     tryCatch( 
-    { RegressionResults = DoMixedEffectRegressionWithGeneName(df)
+    {   if (RegressionType == 'MixedEffect') {
+            RegressionResults = DoMixedEffectRegressionWithGeneName(df)
+        } else if (RegressionType == 'OLS') {
+            print(df)
+            RegressionResults = DoOLSRegressionWithGeneName(df, NormalizeY)
+        }
     }, 
         error=function(error_message) { 
         message(error_message) # Print error statement
