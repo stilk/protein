@@ -16,15 +16,15 @@ DoMixedEffectRegression = function(df, NormalizeY) {
     # Does mixed effect regression of Values by LogScore (i.e. mutational load) while
     # controlling for cancer type and tumor purity. 
     if (NormalizeY) {
-         model = lmer(NormalizedValue ~ LogScore + (1 | type) + purity, data=df)
+         model = lmer(NormalizedValue ~ LogScore + (1 | type) + purity + age, data=df)
     } else {
-         model = lmer(Value ~ LogScore + (1 | type) + purity, data=df)
+         model = lmer(Value ~ LogScore + (1 | type) + purity + age, data=df)
     }
     return(data.frame(summary(model)[10]$coefficients, summary(model)[11]))
 }
 
 DoMixedEffectRegressionWithGeneName = function(df) {
-    model = lmer(NormalizedValue ~ LogScore + (1 | type) + purity + GeneName, data=df)
+    model = lmer(NormalizedValue ~ LogScore + (1 | type) + purity + age + GeneName, data=df)
     return(data.frame(summary(model)[10]$coefficients, summary(model)[11]))
 }
 
