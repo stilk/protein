@@ -63,6 +63,8 @@ def GetRegressionStatsInput(Dataset, DataType, MutType):
     Stats['LogScore'] = np.log10(Stats['MutLoad'] + 1)
     if Dataset == 'TCGA':
         Covariates = Tissue.merge(Purity, left_on='Barcode', right_on='Barcode')
+        Covariates['ShortBarcode'] = Covariates['Barcode'].str[0:12]
+        Covariates = Covariates.merge(GetPatientAge(), left_on='ShortBarcode', right_on='ShortBarcode', how='left')
         if DataType == 'AS':
             Covariates['Barcode'] = Covariates['Barcode'].str[0:12]
     else:
@@ -174,8 +176,8 @@ def GetDeltaPSIForEachGene():
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ASMixedEffectRegressionEstimatesKsKaTCGA')
 
 
-# GetRegressionEstimates(Dataset='TCGA', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True).to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
+GetRegressionEstimates(Dataset='TCGA', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True).to_csv(
+    '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityAndAge')
 
 # GetRegressionEstimates(Dataset='CCLE', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True, NormalizeY=True).to_csv(
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionOLSRegressionEstimatesKsKaCCLE')
