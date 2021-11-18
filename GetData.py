@@ -34,8 +34,13 @@ def GetExpressionData(Dataset, GeneSet=[]):
 
 
 
-
-
+def GetPatientAge(Dataset='TCGA'):
+	DataDir=os.getcwd() + '/Data/Raw/Clinical/'
+	if Dataset == 'TCGA':
+		age = pd.read_csv(DataDir + 'TCGA/TCGA-CDR-SupplementalTableS1.txt', sep='\t')
+		age= age[['bcr_patient_barcode','age_at_initial_pathologic_diagnosis']].rename(columns={
+			'bcr_patient_barcode':'ShortBarcode', 'age_at_initial_pathologic_diagnosis':'age'})
+	return(age)
 
 
 def GetProteinExpressionData(Dataset, GeneSet=[]):
