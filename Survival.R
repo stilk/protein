@@ -2,6 +2,10 @@
 library("survival")
 library("survminer")
 library("cowplot")
+library("gridExtra")
+library("ggplot2")
+library("grid")
+#library("scater")
 OutDir = "/labs/ccurtis2/tilk/scripts/protein/Figures/"
 
 
@@ -39,12 +43,11 @@ PlotSurvivalCurve = function(df, Dataset) {
         #df = df[df$StrataGroup %in% c('LowPro_LowTMB','HighPro_LowTMB'),]
         #print(unique(df$StrataGroup))
         df = df[df$StrataGroup %in% c('LowPro_HighTMB','HighPro_HighTMB'),]
-        #df = subset(df, df$type == 'SKCM')
         print(survdiff(Surv(as.numeric(as.character(PFI.time)), as.numeric(as.character(PFI))) ~  StrataGroup, data = df))
         #df = df[df$StrataGroup %in% c('HighPro_MidTMB', 'LowPro_MidTMB'),]
         res.cox <- survfit(Surv(as.numeric(as.character(PFI.time)), as.numeric(as.character(PFI))) ~ StrataGroup, data = df)
-        PlotSurvival = ggsurvplot(res.cox, conf.int = TRUE, pval=TRUE,data=df)
-
+        PlotSurvival = ggsurvplot(res.cox, title = unique(df$type_x), conf.int = TRUE, pval=TRUE,data=df)
+        return(PlotSurvival)
     }
      #PlotTable = ggsurvplot(res.cox, risk.table.y.text.col = TRUE,risk.table = TRUE, data=df)
     #PlotOut = plot_grid(PlotSurvival, PlotTable, ncol = 1, rel_heights = c(0.66, 0.33))
@@ -53,3 +56,12 @@ PlotSurvivalCurve = function(df, Dataset) {
 
 }
 
+
+PlotSurvivalCurveByCancerTypeFacet = function(df) {
+    df = df[df$StrataGroup %in% c('LowPro_HighTMB','HighPro_HighTMB'),]
+    df$PFI.time = as.numeric(as.character(df$PFI.time))
+    print(survdiff(Surv(as.numeric(as.character(PFI.time)), as.numeric(as.character(PFI))) ~  StrataGroup, data = df))
+    res.cox <- survfit(Surv(as.numeric(as.character(PFI.time)), as.numeric(as.character(PFI))) ~ StrataGroup, data = df)
+    PlotSurvival = ggsurvplot_facet(res.cox, facet.by="type_x", conf.int = TRUE, pval=TRUE,data=df)
+    ggsave(paste0(OutDir, "TCGA_FacetedByCancerTypeKaplanMeierCurve.pdf"), width=12, height=12, units="in")
+}
