@@ -64,7 +64,7 @@ def GetDrugResponseData(Screen='primary', AllDrugs=False):
 	'''
 	Reads in drug screen data (PRISM) from DepMap.
 	Args: @screen = a string for which dataset to read in, `primary` or `secondary` screen
-	      @AllDrugs = boolean of whether to only output protostatis drugs or all drugs
+	      @AllDrugs = boolean of whether to only output protostatis drugs
 	'''
 	DataDir = os.getcwd() + "/Data/Raw/Drug/"
 	drug = pd.read_csv(DataDir + Screen + '-screen-replicate-collapsed-logfold-change.csv', sep=',').rename(
@@ -72,7 +72,7 @@ def GetDrugResponseData(Screen='primary', AllDrugs=False):
 	drug[['column_name','dose','screenType']] = drug['variable'].str.split('::', expand=True)[[0,1,2]]
 	info = pd.read_csv(DataDir + Screen + '-screen-replicate-collapsed-treatment-info.csv', sep=',')
 	if AllDrugs: 
-		DrugTargets = info[['broad_id','moa']].dropna()
+		DrugTargets = info[['broad_id','moa']].dropna().rename(columns={'moa':'subgroup'}).assign(Group='All')
 	else: # Only look at proteostasis inhibitors (proteasome, hsp90, etc)
 		DrugTargets =  pd.concat([pd.DataFrame({'broad_id': info[info['moa'] == 'protein synthesis inhibitor']['broad_id'], 'Group': 'Translation', 'subgroup':'Protein Synthesis Inhibitor'}),
 								pd.DataFrame({'broad_id': info[info['moa'] == 'RNA synthesis inhibitor']['broad_id'], 'Group': 'Translation', 'subgroup':'RNA Synthesis Inhibitor'}),
@@ -80,7 +80,7 @@ def GetDrugResponseData(Screen='primary', AllDrugs=False):
 								pd.DataFrame({ 'broad_id': info[(info['moa'].str.contains('proteasome', na=False))]['broad_id'],  'Group': 'Proteasome', 'subgroup':'Proteasome Inhibitor'}),
 								pd.DataFrame({ 'broad_id': info[(info['moa'] == 'ubiquitin specific protease inhibitor')]['broad_id'],  'Group': 'Ubiquitin', 'subgroup':'Ubiquitin-Specific Proteasome Inhibitor'})
 		])
-	info = info[['broad_id','moa']].dropna().rename(columns={'moa':'subgroup'}).assign(Group='All')
+	info = info[['column_name','name']].drop_duplicates()
 	drug = info.merge(drug, left_on='column_name', right_on='variable')
 	drug = drug.merge(DrugTargets, left_on='column_name_y', right_on='broad_id').rename(columns={'value':'Value'})
 	#drugInfo = pd.read_csv('/labs/ccurtis2/tilk/07_PRISM/00_RawData/Viability/DrugScreen/PrimaryScreen/primary-screen-replicate-collapsed-treatment-info.csv', sep=',')
