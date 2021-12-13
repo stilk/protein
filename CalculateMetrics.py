@@ -46,7 +46,7 @@ def GetRegressionStatsInput(Dataset, DataType, MutType):
     if DataType == 'RNAi':
         Values = GetRNAiResponseData()
     elif DataType == 'Drug':
-        Values = GetDrugResponseData(Screen='primary')
+        Values = GetDrugResponseData(Screen='primary', AllDrugs=True)
     elif DataType == 'Expression':
         Values = GetExpressionData(Dataset)
     elif DataType == 'Protein':
@@ -176,8 +176,10 @@ def GetDeltaPSIForEachGene():
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ASMixedEffectRegressionEstimatesKsKaTCGA')
 
 
-GetRegressionEstimates(Dataset='TCGA', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True).to_csv(
-    '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityAndAge')
+GetPerDrugRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/DrugOLSRegressionEstimatesKsKaCCLE')
+
+# GetRegressionEstimates(Dataset='TCGA', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True).to_csv(
+#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityAndAge')
 
 # GetRegressionEstimates(Dataset='CCLE', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True, NormalizeY=True).to_csv(
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionOLSRegressionEstimatesKsKaCCLE')
