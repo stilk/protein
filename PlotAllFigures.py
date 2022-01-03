@@ -261,6 +261,64 @@ def GetFigureInput(FigureNum):
         df['Adj.Pval'] = rstats.p_adjust(FloatVector(df['pVal']), method = 'fdr')
         test= df[(df['Adj.Pval'] < 0.05) & (df['Estimate'] < 0 )]['GeneName']
         test2=ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment(ConvertPandasDFtoR(test)))
+    elif FigureNum == 'JacknifeExpCCLE':
+        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
+        Out = pd.DataFrame()
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLEExpressionKsKa*'))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName)
+            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+            df = df[df['Coefficient'] == 'LogScore'] 
+            df = df.merge(Complexes, right_on='Hugo', left_on='GeneName')
+            print(df)
+            Out = Out.append(df)
+        return(ConvertPandasDFtoR(Out))
+    elif FigureNum == 'JacknifeExpTCGA':
+        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
+        Out = pd.DataFrame()
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/TCGAExpression*'))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName)
+            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+            df = df[df['Coefficient'] == 'LogScore'] 
+            df = df.merge(Complexes, right_on='Hugo', left_on='GeneName')
+            print(df)
+            Out = Out.append(df)
+        return(ConvertPandasDFtoR(Out))
+    elif FigureNum == 'JacknifeDrugsCCLE':
+        DrugsOfInterest = GetDrugResponseData(Screen='primary', AllDrugs=False)[['name','Group','subgroup']].drop_duplicates()
+        Out = pd.DataFrame()
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLEDrug*'))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName)
+            df = df[df['Coefficient'] == 'LogScore'] 
+            Out = Out.append(df)
+        return(ConvertPandasDFtoR(Out))
+    elif FigureNum == 'JacknifeshRNACCLE':
+        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
+        Out = pd.DataFrame()
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLERNAi*'))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName)
+            df = df[df['Coefficient'] == 'LogScore'] 
+            Out = Out.append(df)
+        return(ConvertPandasDFtoR(Out))
+    elif FigureNum == 'AllDrugsByLoad':
+        df = pd.read_csv(os.getcwd() + '/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE')
+        df = df[df['Coefficient'] == 'LogScore'] 
+        # Freq = df['subgroup'].value_counts().reset_index()
+        # Freq['PlottingGroup'] = np.where(Freq['subgroup'] < 4,'Other', Freq['index'])
+        # df = df.merge(Freq[['index','PlottingGroup']], left_on='subgroup',right_on='index')
+        # df[df['pVal'] < 0.05]['PlottingGroup'].unique()
+        # # CountsOfSubgroups = df['subgroup'].value_counts().reset_index()
+        # CountsOfSubgroups = CountsOfSubgroups[CountsOfSubgroups['subgroup'] > 5]
+        # df = df[df['subgroup'].isin(CountsOfSubgroups['index'])]
+        return(ConvertPandasDFtoR(df))
+
+
+
+
+
 
 
 def GetFigure(Figure):
@@ -309,8 +367,26 @@ def GetFigure(Figure):
             value_vars=['Housekeeping','Essential','Drivers'])
         df = df.groupby(['value','Bin'])[['UnderExpressed', 'NotUnderExpressed', 'OverExpressed','NotOverExpressed']].sum().reset_index()
         SetUpPlottingPackages(); ro.r.PlotGlobalDownAndUpregulation(ConvertPandasDFtoR(df))
+    elif Figure == 'JacknifeExpCCLE':
+        df = GetFigureInput('JacknifeExpCCLE')
+        SetUpPlottingPackages(); ro.r.PlotJacknifedExpressionAcrossGroups(df, 'CCLE')
+    elif Figure == 'JacknifeExpTCGA':
+        df = GetFigureInput('JacknifeExpTCGA')
+        SetUpPlottingPackages(); ro.r.PlotJacknifedExpressionAcrossGroups(df,'TCGA')
+    elif Figure == 'JacknifeDrugsCCLE':
+        df = GetFigureInput('JacknifeDrugsCCLE')
+        SetUpPlottingPackages(); ro.r.PlotJacknifedDrugsAcrossGroups(df)
+    elif Figure == 'JacknifeshRNACCLE':
+        df = GetFigureInput('JacknifeshRNACCLE')
+        SetUpPlottingPackages(); ro.r.PlotJacknifedshRNAAcrossGroups(df)
+    elif Figure == 'AllDrugsByLoad':
+        df = GetFigureInput('AllDrugsByLoad')
+        SetUpPlottingPackages(); ro.r.PlotRegressionForAllDrugs(df)
 
 
+
+
+        
     # elif Figure == 'DeltaPSI':     
     #     df['pVal'] < 0.05]
     #     gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment(ro.r.GetGeneSets('ExpressionCCLE')))
