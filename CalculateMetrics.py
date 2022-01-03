@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import numpy as np
 from pandas.core.frame import DataFrame
+import os.path
 import rpy2.robjects as ro 
 from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri
@@ -94,20 +95,26 @@ def GetRegressionEstimates(Dataset, DataType, MutType='SNV', GeneSet=[], ByGene=
             return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGroup(R)))
         #elif Dataset == 'CCLE':
 
-def JacknifeAcrossCancerTypes(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Jacknife/'):
+def JacknifeAcrossCancerTypes(Dataset, DataType, CancerTypeToRemove='', MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Jacknife/'):
     ''' 
     Removes a cancer type from the dataset and re-calculates regression coefficients.
     Writes jacknifed regression coefficients to file since files per gene are huge.
     Only set up for per gene for now. 
-    @DataType should be expression (since that's the only data type being used per gene.)
+    @CancerTypeToRemove = a string of which individual cancer type to remove. If empty loops through
+        all cancer types. If not, removes cancer types of that string and exists loop after 1 iteration.
     '''
     SetUpRegressionPackages()
     AllCancerTypes = GetRegressionStatsInput(Dataset, DataType, MutType) # Get input data for all cancer types
     for CancerType in AllCancerTypes['type'].unique(): # Loop through all cancer types
-        Knifed = AllCancerTypes[AllCancerTypes['type'] != CancerType] # Remove a cancer type
+        if CancerTypeToRemove != '': # Don't loop through all cancer types; only do jacknife for one type
+            CancerType = CancerTypeToRemove
+        Knifed = AllCancerTypes[AllCancerTypes['type'] != CancerType] # Remove cancer type from loop
         R = ConvertPandasDFtoR(Knifed) # Convert df to R for regression
+        print('Removing cancer type... ' + str(CancerType))
         if Dataset == 'CCLE':
             OutFile = OutDir + Dataset + DataType + MutType + 'OLSRegressionJacknifed' + CancerType.replace(' ','_').replace('/','_') 
+            if os.path.isfile(OutFile): # If file already exists, skip
+                continue
             if DataType == 'RNAi':
                 GetshRNARegression(Knifed).assign(CancerTypeRemoved = CancerType).to_csv(OutFile)
             elif DataType == 'Drug': # Do grouped regression 
@@ -116,9 +123,14 @@ def JacknifeAcrossCancerTypes(Dataset, DataType, MutType='KsKa', OutDir=os.getcw
                 OneTypeKnifed = ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', True)).assign(
                     CancerTypeRemoved = CancerType).to_csv(OutFile)
         elif Dataset == 'TCGA':
-            OutFile = OutDir + Dataset + MutType + 'OLSRegressionJacknifed' + CancerType
+            OutFile = OutDir + Dataset + DataType + MutType + 'MixedEffectRegressionJacknifed' + CancerType
+            if os.path.isfile(OutFile): # If file already exists, skip
+                continue
             OneTypeKnifed = ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'MixedEffect', True)).assign(
                 CancerTypeRemoved = CancerType).to_csv(OutFile)
+        if CancerTypeToRemove != '': # Only iterating on one cancer type; break loop if true
+            print('Done with analysis for cancer type: ' + str(CancerType))
+            break
         
 
 def GetSubsetOfGeneAnnotationsOfInterest():
@@ -253,4 +265,7 @@ def GetDeltaPSIForEachGene():
 
 # JacknifeAcrossCancerTypes('CCLE', DataType='Drug', MutType='KsKa')
 
-JacknifeAcrossCancerTypes('TCGA', DataType='Expression', MutType='KsKa')
+# JacknifeAcrossCancerTypes('TCGA', DataType='Expression', MutType='KsKa')
+
+
+# JacknifeAcrossCancerTypes('TCGA', 'Expression', 'UVM')
