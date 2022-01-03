@@ -37,7 +37,7 @@ VisualizeAllAS = function(Threshold='0.8') {
                 mutate(se = sd / sqrt(n), lower.ci = mean - qt(1 - (0.05 / 2), n - 1) * se, upper.ci = mean + qt(1 - (0.05 / 2), n - 1) * se))
     PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=AS, color=AS)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
-         geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2) +
+        geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2) +
         labs(y='Under-expressed Transcripts With AS Event \nAll Transcripts With AS Event',
          x= 'Number of Protein Coding Mutations')
 
@@ -68,7 +68,7 @@ VisualizeAllASThresholds = function(AS_Type='RI') {
                 mutate(se = sd / sqrt(n), lower.ci = mean - qt(1 - (0.05 / 2), n - 1) * se, upper.ci = mean + qt(1 - (0.05 / 2), n - 1) * se))
     PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=Thresholds, color=Thresholds)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
-         geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2) +
+        geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2) +
         labs(y='Under-expressed Transcripts With Intron Retention \nAll Transcripts With Intron Retention',
          x= 'Number of Protein Coding Mutations')
     ggsave(paste0(PlotDir, 'AS_RI_AllThresholds_TCGA.pdf' ), width=8, height=5, units='in') 
@@ -91,7 +91,7 @@ VisualizeAS = function() {
                 mutate(se = sd / sqrt(n), lower.ci = mean - qt(1 - (0.05 / 2), n - 1) * se, upper.ci = mean + qt(1 - (0.05 / 2), n - 1) * se))
     PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=1)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
-         geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2, position=position_dodge(.9)) +
+        geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2, position=position_dodge(.9)) +
         labs(y='Under-expressed Transcripts With Intron Retention \nAll Transcripts With Intron Retention', x= 'Number of Protein Coding Mutations')
     ggsave(paste0(PlotDir, 'AS_RI_PerTumor_PSI_TCGA.pdf' ), width=5, height=4, units='in') 
 
@@ -390,17 +390,143 @@ PlotDeltaGPerTumor = function(df) {
 
 PlotOverAndUnderForProteasome = function() {
 
-
-## P
     library(reshape2)
-    df = read.table('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/NumOverAndOverForProteasomeByGene', sep=',', header=T)
-    df$MutLoadGroup = gsub('nan','Mid',df$MutLoadGroup) 
+    df = read.table('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/NumOverAndOverForProteasomeByGene', sep=',', header=T, stringsAsFactors=FALSE)
+    df = df[df$MutBin %in% c('high','low'),]
     df$X = NULL 
     
-    plot_df = melt(df, id.vars = c("GeneName", "Group",'MutLoadGroup'))
-    plot_df = subset(plot_df, plot_df$variable == 'DepletedTranscript')
-    PlotOut = ggplot(plot_df, aes(x=GeneName, y=value, color=MutLoadGroup)) + geom_point() #+
+    plot_df = melt(df[c('MutBin','group','FractionOfGenesInCategory')], id.vars = c("group",'MutBin'))
+    #plot_df = subset(plot_df, plot_df$variable == 'DepletedTranscript')
+    PlotOut = ggplot(df, aes(x=MutBin, y=FractionOfGenesInCategory, color=group)) + geom_boxplot() + facet_wrap(~type)
         #facet_wrap(~MutLoadGroup, scale='free_y')
     ggsave(paste0(PlotDir, 'ProteasomeExpressionForClassification.pdf' ), width=8, height=5, units='in')
 
+}
+
+PlotJacknifedExpressionAcrossGroups = function(df, dataset) {
+    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
+    df$NegLog10Pval = -log10(as.numeric(as.character(df$AdjPval)))
+    df$SortedLevel = factor(df$Group, levels=c('Mitochondrial Chaperones', 'ER Chaperones','Small HS','HSP 100','HSP 90',
+                'HSP 70','HSP 60', 'HSP 40','20S Core','20S Catalytic Core','Immunoproteasome Core','Immunoproteasome Catalytic Core',
+                 '11S Regulatory Particle', '19S Regulatory Particle','Mitochondrial Ribosomes', 'Cytoplasmic Ribosomes'))
+    Estimate = ggplot(data=df, aes(x = CancerTypeRemoved, y=as.numeric(as.character(Estimate)), color=SortedLevel)) +  geom_boxplot() +
+                facet_wrap(~SortedLevel, ncol=5) +
+                 theme_minimal() + labs(y='Effect Size (Beta Coefficient)', x='') +  theme(legend.position='none') +
+                 geom_hline(yintercept=0, linetype='dashed', col = 'black') + #facet_wrap(~SortedLevel, scales='free_x', ncol=12) +
+                 theme(strip.text = element_text(face="bold", size=8)) + ggtitle(dataset) +
+                 theme(plot.title = element_text(hjust = 0.5)) + # Center title
+                 theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size=7))
+    ggsave(paste0(PlotDir, 'RegCoefPerGroupsJacknifed_', dataset,'.pdf' ), width=10, height=6, units='in')
+
+}
+
+PlotJacknifedDrugsAcrossGroups = function(df) {
+    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
+    df$Sig = ifelse(df$Pr...t.. < 0.05, '*','')
+    df$Sig = ifelse(df$Pr...t.. < 0.005, '**', df$Sig)
+    df$Sig = ifelse(df$Pr...t.. < 0.0005, '***', df$Sig)
+    df$Dummy = '' #'Protein Coding\nMutations'
+    df = subset(df, (df$subgroup != 'Protein Synthesis Inhibitor') & (df$subgroup != 'RNA Synthesis Inhibitor'))
+    df$subgroup2 = gsub(' Inhibitor', '\nInhibitor', df$subgroup)
+    df$subgroup2 = gsub('cific Pro', 'cific\nPro', df$subgroup)
+    ggplot(df, aes(y=CancerTypeRemoved, x = name ,fill=Estimate)) + geom_tile()+
+        #scale_fill_viridis(discrete=FALSE) +
+        #scale_fill_gradientn(colours=c("blue","black","red")) +
+        scale_fill_gradientn(colors=c("red","white","grey"), 
+            values=rescale(c(min(df$Estimate),0, max(df$Estimate))),limits=c(min(df$Estimate),max(df$Estimate)))+
+        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8) +
+        theme_minimal() +
+        #coord_flip() +
+        #facet_wrap(~subgroup, scales='free', ncol=5) +
+        #facet_wrap(~Group, scales='free_x', space='free') +
+        facet_grid(cols=vars(subgroup2), scales='free_x', space='free_x') +
+        scale_colour_manual(values=c("black","black",'black','black')) +
+        labs(y='',x='Drug Name', fill='Beta\nCoefficient') + 
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) +
+        theme(plot.title = element_text(hjust = 0.5, face = "bold")) + ggtitle('PRISM (Drug Screen)') 
+    ggsave(paste0(PlotDir, 'CCLEDrugJacknifed.pdf' ), width=12, height=6, units='in')
+}
+
+
+PlotJacknifedshRNAAcrossGroups = function(df) {
+    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
+    df$Sig = ifelse(df$Pr...t.. < 0.05, '*','')
+    df$Sig = ifelse(df$Pr...t.. < 0.005, '**', df$Sig)
+    df$Sig = ifelse(df$Pr...t.. < 0.0005, '***', df$Sig)
+    df$Dummy = '' #'Protein Coding\nMutations'
+    df$Group = gsub('mic Rib', 'mic\nRib', df$Group); df$Group = gsub('ial Rib', 'ial\nRib', df$Group); df$Group = gsub('ial Ch', 'ial\nCh', df$Group)
+    df$Group = gsub('ory Pa', 'ory\nPa', df$Group)
+    ggplot(df, aes(y=CancerTypeRemoved, x = Group ,fill=Estimate)) + geom_tile()+
+        #scale_fill_viridis(discrete=FALSE) +
+        #scale_fill_gradientn(colours=c("blue","black","red")) +
+        scale_fill_gradientn(colors=c("red","grey","blue"), 
+            values=rescale(c(min(df$Estimate),0, max(df$Estimate))),limits=c(min(df$Estimate),max(df$Estimate)))+
+        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8) +
+        theme_minimal() +
+        #coord_flip() +
+        #facet_wrap(~subgroup, scales='free', ncol=5, space='free_x') +
+        #facet_wrap(~Group, scales='free_x', space='free') +
+        facet_grid(cols=vars(subgroup), scales='free_x', space='free_x') +
+        scale_colour_manual(values=c("black","black",'black','black')) +
+        labs(y='',x='', fill='Beta\nCoefficient') + theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ theme(text = element_text(size=18))+
+        ggtitle('Achilles (shRNA Screen)')
+    ggsave(paste0(PlotDir, 'CCLEshRNAJacknifed.pdf' ), width=12, height=8, units='in')
+}
+
+
+PlotRegressionForAllDrugs = function(df) {
+    df$log10pval= log10(as.numeric(as.character(df$pVal)))
+    df$SigGroups = ifelse(df$pVal < 0.05, 'Significant', 'NotSignificant')
+    df$EstimateGroups = ifelse(df$Estimate > 0, 'Increase In Viability With Load','Decrease In Viability With Load')
+    #print(head(df))
+    PlotOfCounts = ggplot(df, aes(x = EstimateGroups, color=SigGroups, fill=SigGroups)) + geom_bar() +
+        theme_minimal() + labs(y='Number of Drugs', x='') + 
+        theme(legend.position='bottom', legend.title=element_blank()) 
+    df = subset(df, (df$SigGroups == 'Significant'))
+    CountsPerDrug = data.frame(table(as.character(df$subgroup)))
+    CountsPerDrug$NewGroup = ifelse(CountsPerDrug$Freq < 2, 'Other', as.character(CountsPerDrug$Var1))
+    df= merge(df, CountsPerDrug, by.x='subgroup', by.y='Var1') 
+    df = subset(df, (df$Estimate < 0))
+    PlottingGroup = rbind(
+        data.frame(PlottingGroup = 'Other', NewGroup = c('Other')),
+        data.frame(PlottingGroup = 'Growth Factor Inhibitors', NewGroup = c("acetylcholine receptor antagonist","adenosine receptor antagonist",
+                                        "adrenergic receptor agonist","adrenergic receptor antagonist",
+                                        'benzodiazepine receptor agonist','androgen receptor antagonist','dipeptidyl peptidase inhibitor',
+                                        'dopamine receptor agonist','dopamine receptor antagonist','dopamine receptor antagonist, serotonin receptor antagonist',
+                                        'EGFR inhibitor',"FGFR inhibitor, VEGFR inhibitor","glutamate receptor antagonist","PDGFR tyrosine kinase receptor inhibitor",
+                                        "progesterone receptor agonist","retinoid receptor agonist",'serotonin receptor agonist','serotonin receptor antagonist','VEGFR inhibitor')),
+        data.frame(PlottingGroup = 'Nuclear Transport Inhibitor', NewGroup = c('exportin antagonist')),
+        data.frame(PlottingGroup = 'Pro-Apoptosis' , NewGroup = c("AKT inhibitor","ALK tyrosine kinase receptor inhibitor","Aurora kinase inhibitor",'CDK inhibitor',
+                                        'JNK inhibitor','mTOR inhibitor, PI3K inhibitor','NFkB pathway inhibitor','other antibiotic','phosphodiesterase inhibitor',
+                                        'PI3K inhibitor','PKC inhibitor','PLK inhibitor','protein tyrosine kinase inhibitor','RAF inhibitor','tyrosine kinase inhibitor','XIAP inhibitor')),
+        data.frame(PlottingGroup = 'ATPase Inhibitor' , NewGroup = c("ATPase inhibitor",'HDAC inhibitor')),
+        data.frame(PlottingGroup = 'Inflammatory/Immune' , NewGroup = c('analgesic agent','CC chemokine receptor antagonist','cyclooxygenase inhibitor',
+                                        'glucocorticoid receptor agonist','histamine receptor antagonist','nitric oxide synthase inhibitor','local anesthetic',
+                                        'p38 MAPK inhibitor','SYK inhibitor')),
+        data.frame(PlottingGroup = 'Protein Synthesis Inhibitor' , NewGroup = c('antimalarial agent','bacterial 50S ribosomal subunit inhibitor','protein synthesis inhibitor')),
+        data.frame(PlottingGroup = 'DNA Replication Inhibitor' , NewGroup = c('antiprotozoal agent','ATR kinase inhibitor','bacterial DNA gyrase inhibitor','CHK inhibitor',
+                                        'DNA inhibitor','DNA polymerase inhibitor','ribonucleotide reductase inhibitor','topoisomerase inhibitor')),
+        data.frame(PlottingGroup = 'Microtubulin/Spindle Polymerization Inhibitor' , NewGroup = c('bacterial cell wall synthesis inhibitor','fungal lanosterol demethylase inhibitor',
+                                        'kinesin-like spindle protein inhibitor','membrane integrity inhibitor','microtubule inhibitor',
+                                        'microtubule stabilizing agent, tubulin polymerization inhibitor','tubulin polymerization inhibitor')),
+        data.frame(PlottingGroup = 'Transcription Inhibitor' , NewGroup = c('bromodomain inhibitor','RNA polymerase inhibitor')),
+        data.frame(PlottingGroup = 'Ion Channel Regulation', NewGroup =  c('calcium channel blocker','potassium channel blocker','potassium channel activator','sodium channel blocker')),
+        data.frame(PlottingGroup = 'Cell Migration Inhibitor', NewGroup =  c("focal adhesion kinase inhibitor",'matrix metalloprotease inhibito')),
+        data.frame(PlottingGroup = 'Protein Degradation Inhibitors', NewGroup =  c("HCV inhibitor",'HIV protease inhibitor',"proteasome inhibitor",'ubiquitin specific protease inhibitor')),
+        data.frame(PlottingGroup = 'Chaperone Inhibitors', NewGroup =  c("HSP inhibitor")),
+        data.frame(PlottingGroup = 'Oxidative Stress Alleviation Inhibitor', NewGroup =  c("nuclear factor erythroid derived, like (NRF2) activator"))
+    )
+    df = merge(df, PlottingGroup, by.x='NewGroup' ,by.y='NewGroup')
+    df$EstimateRank = rank(df$Estimate)
+    PlotFactors = data.frame(df %>% group_by(PlottingGroup) %>% summarize(median(Estimate)))
+    PlotFactors = PlotFactors[order(PlotFactors$median.Estimate.),]
+    df$PlottingGroups2 = factor(df$PlottingGroup, levels=as.character(PlotFactors$PlottingGroup))
+    Foo = ggplot(data=df, aes(x = Estimate, y=PlottingGroups2, color=PlottingGroups2)) +  geom_boxplot() +
+        theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') +
+        #theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
+        geom_hline(yintercept= 0, linetype='dashed', col = 'black') +theme(legend.position='none') +
+        theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1))
+    Combined = plot_grid(PlotOfCounts, Foo, rel_heights=c(0.75,1), ncol = 1) 
+    ggsave(paste0(PlotDir, 'RegCoefAllDrugs_CCLE.pdf' ), width=6, height=6, units='in')
 }
