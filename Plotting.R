@@ -688,7 +688,7 @@ GetAnnotatedMOA = function() {
                                         'free radical scavenger','flavanone glycoside','glutathione transferase stimulant','NADPH oxidase inhibitor','NADPH inhibitor','melanin inhibitor',
                                         'RAGE receptor antagonist','NAD precursor, vitamin B','xanthine oxidase inhibitor')),                          
         data.frame(PlottingGroup = 'Other', NewGroup = c('antacid','antiinfective drug','levodropropizine','bone resorption inhibitor','contrast agent','expectorant','laxative','topical sunscreen agent',
-                                        'topical anesthetic','radiopaque medium','psychoactive drug',' antiseptic','mucolytic agent','mucus protecting agent','antiseptic','choleretic agent','pharmacological chaperone',
+                                        'topical anesthetic','radiopaque medium','psychoactive drug','antiseptic','mucolytic agent','mucus protecting agent','antiseptic','choleretic agent','pharmacological chaperone',
                                         'panipenem uptake inhibitor','pregnane X receptor agonist','tyrosinase inhibitor','protein synthesis stimulant',
                                         'solute carrier family member inhibitor','transthyretin amyloid inhibitor','anti-pneumocystis agent',
                                         'gene expression stimulant','hypercalcaemic agent','motilin receptor agonist','muscle relaxant','myorelaxant','nematocide','osmosis stimulant', 'other antifungal',
@@ -721,7 +721,7 @@ GetAnnotatedMOA = function() {
 
 }
 
-PlotRegressionForAllDrugs = function(df) {
+PlotAllNegativelyAssociatedDrugs = function(df) {
     df = GetAnnotatedMOA()
     df$log10pval= log10(as.numeric(as.character(df$pVal)))
     df$SigGroups = ifelse(df$pVal < 0.05, 'Significant', 'NotSignificant')
@@ -745,66 +745,39 @@ PlotRegressionForAllDrugs = function(df) {
         theme(legend.position='none', legend.title=element_blank())
     ggsave(paste0(PlotDir, 'RegCoefSigVsNonSig_CCLE.pdf' ), width=6, height=6, units='in')
 
-    PlotOfCounts = ggplot(PlotFactors, aes(y = PlottingGroup2, x=PercentSignificantDrugs * 100, color=PlottingGroup2, fill=PlottingGroup2)) + 
-        geom_bar(stat="identity") +
-        theme_minimal() + labs(y='Number of Drugs', x='Percent of Significant Drugs In Category') + 
-        theme(legend.position='none', legend.title=element_blank())
-    ggsave(paste0(PlotDir, 'RegCoefSigVsNonSig_CCLE.pdf' ), width=6, height=6, units='in')
+}
 
+PlotBootstrappedNegativelyAssociatedDrugs = function(df) { 
+
+    df = GetAnnotatedMOA()
+    df$log10pval= log10(as.numeric(as.character(df$pVal)))
+    df$SigGroups = ifelse(df$pVal < 0.05, 'Significant', 'NotSignificant')
+    df$EstimateGroups = ifelse(df$Estimate > 0, 'Increase In Viability With Load','Decrease In Viability With Load')
+    CountsPerDrug = data.frame(table(as.character(df$PlottingGroup)))
+    df= merge(df, CountsPerDrug, by.x='PlottingGroup', by.y='Var1') 
+    df = subset(df, (df$Estimate < 0))
+    # Bootstrap 50 drugs from each broad group 100 times; How often is the group significant? 
+    set.seed(123)
+    AllBootstraps = data.frame() # Empty df where to append results
+    for (i in 1:100) {
+        Sampled = df %>% group_by(PlottingGroup) %>% sample_n(size = 50, replace=TRUE) %>% # Sample 50 drugs
+                group_by(PlottingGroup, SigGroups) %>% tally() %>% # Count how many times each drug is sig assoc w/ load
+                spread(SigGroups, n) %>% replace(is.na(.), 0) %>% # Long to wide transformation of significant groups
+                mutate(FracSig = Significant/(NotSignificant + Significant)) # Calculate fraction significant drugs in group
+        AllBootstraps = rbind(AllBootstraps, data.frame(Sampled))
+    }
+    # Order results by largest effect size
+    Rank = data.frame(AllBootstraps %>% group_by(PlottingGroup) %>% summarise(median = median(FracSig)))
+    Rank$FracSigRank = rank(Rank$median)
+    Rank = Rank[order(Rank$FracSigRank),]
+    AllBootstraps$PlottingGroup2 = factor(AllBootstraps$PlottingGroup, levels=as.character(Rank$PlottingGroup))
+  
+
+    # Box plot of all boostraps
+    PlotOfCounts = ggplot(AllBootstraps, aes(y = PlottingGroup2, x=FracSig, color=PlottingGroup2, fill=PlottingGroup2)) + 
+        geom_boxplot()+
+        theme_minimal() + labs(y='', x='Percent of Significant Drugs In Category') + 
+        theme(legend.position='none', legend.title=element_blank())
+    ggsave(paste0(PlotDir, 'RegCoefBootstrappedByDrugGroupSize_CCLE.pdf' ), width=6, height=5, units='in')
 
 }
-# PlotRegressionForAllDrugs = function(df) {
-#     df$log10pval= log10(as.numeric(as.character(df$pVal)))
-#     df$SigGroups = ifelse(df$pVal < 0.05, 'Significant', 'NotSignificant')
-#     df$EstimateGroups = ifelse(df$Estimate > 0, 'Increase In Viability With Load','Decrease In Viability With Load')
-#     #print(head(df))
-#     PlotOfCounts = ggplot(df, aes(x = EstimateGroups, color=SigGroups, fill=SigGroups)) + geom_bar() +
-#         theme_minimal() + labs(y='Number of Drugs', x='') + 
-#         theme(legend.position='bottom', legend.title=element_blank()) 
-#     df = subset(df, (df$SigGroups == 'Significant'))
-#     CountsPerDrug = data.frame(table(as.character(df$subgroup)))
-#     CountsPerDrug$NewGroup = ifelse(CountsPerDrug$Freq < 2, 'Other', as.character(CountsPerDrug$Var1))
-#     df= merge(df, CountsPerDrug, by.x='subgroup', by.y='Var1') 
-#     df = subset(df, (df$Estimate < 0))
-#     PlottingGroup = rbind(
-#         data.frame(PlottingGroup = 'Other', NewGroup = c('Other')),
-#         data.frame(PlottingGroup = 'Growth Factor Inhibitors', NewGroup = c("acetylcholine receptor antagonist","adenosine receptor antagonist",
-#                                         "adrenergic receptor agonist","adrenergic receptor antagonist",
-#                                         'benzodiazepine receptor agonist','androgen receptor antagonist','dipeptidyl peptidase inhibitor',
-#                                         'dopamine receptor agonist','dopamine receptor antagonist','dopamine receptor antagonist, serotonin receptor antagonist',
-#                                         'EGFR inhibitor',"FGFR inhibitor, VEGFR inhibitor","glutamate receptor antagonist","PDGFR tyrosine kinase receptor inhibitor",
-#                                         "progesterone receptor agonist","retinoid receptor agonist",'serotonin receptor agonist','serotonin receptor antagonist','VEGFR inhibitor')),
-#         data.frame(PlottingGroup = 'Nuclear Transport Inhibitor', NewGroup = c('exportin antagonist')),
-#         data.frame(PlottingGroup = 'Pro-Apoptosis' , NewGroup = c("AKT inhibitor","ALK tyrosine kinase receptor inhibitor","Aurora kinase inhibitor",'CDK inhibitor',
-#                                         'JNK inhibitor','mTOR inhibitor, PI3K inhibitor','NFkB pathway inhibitor','other antibiotic','phosphodiesterase inhibitor',
-#                                         'PI3K inhibitor','PKC inhibitor','PLK inhibitor','protein tyrosine kinase inhibitor','RAF inhibitor','tyrosine kinase inhibitor','XIAP inhibitor')),
-#         data.frame(PlottingGroup = 'ATPase Inhibitor' , NewGroup = c("ATPase inhibitor",'HDAC inhibitor')),
-#         data.frame(PlottingGroup = 'Inflammatory/Immune' , NewGroup = c('analgesic agent','CC chemokine receptor antagonist','cyclooxygenase inhibitor',
-#                                         'glucocorticoid receptor agonist','histamine receptor antagonist','nitric oxide synthase inhibitor','local anesthetic',
-#                                         'p38 MAPK inhibitor','SYK inhibitor')),
-#         data.frame(PlottingGroup = 'Protein Synthesis Inhibitor' , NewGroup = c('antimalarial agent','bacterial 50S ribosomal subunit inhibitor','protein synthesis inhibitor')),
-#         data.frame(PlottingGroup = 'DNA Replication Inhibitor' , NewGroup = c('antiprotozoal agent','ATR kinase inhibitor','bacterial DNA gyrase inhibitor','CHK inhibitor',
-#                                         'DNA inhibitor','DNA polymerase inhibitor','ribonucleotide reductase inhibitor','topoisomerase inhibitor')),
-#         data.frame(PlottingGroup = 'Microtubulin/Spindle Polymerization Inhibitor' , NewGroup = c('bacterial cell wall synthesis inhibitor','fungal lanosterol demethylase inhibitor',
-#                                         'kinesin-like spindle protein inhibitor','membrane integrity inhibitor','microtubule inhibitor',
-#                                         'microtubule stabilizing agent, tubulin polymerization inhibitor','tubulin polymerization inhibitor')),
-#         data.frame(PlottingGroup = 'Transcription Inhibitor' , NewGroup = c('bromodomain inhibitor','RNA polymerase inhibitor')),
-#         data.frame(PlottingGroup = 'Ion Channel Regulation', NewGroup =  c('calcium channel blocker','potassium channel blocker','potassium channel activator','sodium channel blocker')),
-#         data.frame(PlottingGroup = 'Cell Migration Inhibitor', NewGroup =  c("focal adhesion kinase inhibitor",'matrix metalloprotease inhibito')),
-#         data.frame(PlottingGroup = 'Protein Degradation Inhibitors', NewGroup =  c("HCV inhibitor",'HIV protease inhibitor',"proteasome inhibitor",'ubiquitin specific protease inhibitor')),
-#         data.frame(PlottingGroup = 'Chaperone Inhibitors', NewGroup =  c("HSP inhibitor")),
-#         data.frame(PlottingGroup = 'Oxidative Stress Alleviation Inhibitor', NewGroup =  c("nuclear factor erythroid derived, like (NRF2) activator"))
-#     )
-#     df = merge(df, PlottingGroup, by.x='NewGroup' ,by.y='NewGroup')
-#     df$EstimateRank = rank(df$Estimate)
-#     PlotFactors = data.frame(df %>% group_by(PlottingGroup) %>% summarize(median(Estimate)))
-#     PlotFactors = PlotFactors[order(PlotFactors$median.Estimate.),]
-#     df$PlottingGroups2 = factor(df$PlottingGroup, levels=as.character(PlotFactors$PlottingGroup))
-#     Foo = ggplot(data=df, aes(x = Estimate, y=PlottingGroups2, color=PlottingGroups2)) +  geom_boxplot() +
-#         theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') +
-#         #theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank()) +
-#         geom_hline(yintercept= 0, linetype='dashed', col = 'black') +theme(legend.position='none') +
-#         theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1))
-#     Combined = plot_grid(PlotOfCounts, Foo, rel_heights=c(0.75,1), ncol = 1) 
-#     ggsave(paste0(PlotDir, 'RegCoefAllDrugs_CCLE.pdf' ), width=6, height=6, units='in')
-# }
