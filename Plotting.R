@@ -760,24 +760,31 @@ PlotBootstrappedNegativelyAssociatedDrugs = function(df) {
     set.seed(123)
     AllBootstraps = data.frame() # Empty df where to append results
     for (i in 1:100) {
-        Sampled = df %>% group_by(PlottingGroup) %>% sample_n(size = 50, replace=TRUE) %>% # Sample 50 drugs
+        # Sample within broad groups
+        SampledByGroup = df %>% group_by(PlottingGroup) %>% sample_n(size = 50, replace=TRUE) %>% # Sample 50 drugs
                 group_by(PlottingGroup, SigGroups) %>% tally() %>% # Count how many times each drug is sig assoc w/ load
                 spread(SigGroups, n) %>% replace(is.na(.), 0) %>% # Long to wide transformation of significant groups
                 mutate(FracSig = Significant/(NotSignificant + Significant)) # Calculate fraction significant drugs in group
-        AllBootstraps = rbind(AllBootstraps, data.frame(Sampled))
+        # Sample from all drugs (aka not by groups)
+        SampledRandom = df %>% sample_n(size = 50, replace=TRUE) %>% 
+                group_by(SigGroups) %>% tally() %>% spread(SigGroups, n) %>% replace(is.na(.), 0) %>% 
+                mutate(FracSig = Significant/(NotSignificant + Significant)) 
+        SampledRandom = data.frame('PlottingGroup' = c('Any Category'), SampledRandom)
+        SampledByGroup = rbind(data.frame(SampledByGroup), SampledRandom)
+        AllBootstraps = rbind(AllBootstraps, data.frame(SampledByGroup))
     }
     # Order results by largest effect size
-    Rank = data.frame(AllBootstraps %>% group_by(PlottingGroup) %>% summarise(median = median(FracSig)))
-    Rank$FracSigRank = rank(Rank$median)
+    Rank = data.frame(AllBootstraps %>% group_by(PlottingGroup) %>% summarise(mean = mean(FracSig)))
+    Rank$FracSigRank = rank(Rank$mean)
     Rank = Rank[order(Rank$FracSigRank),]
     AllBootstraps$PlottingGroup2 = factor(AllBootstraps$PlottingGroup, levels=as.character(Rank$PlottingGroup))
   
-
     # Box plot of all boostraps
     PlotOfCounts = ggplot(AllBootstraps, aes(y = PlottingGroup2, x=FracSig, color=PlottingGroup2, fill=PlottingGroup2)) + 
-        geom_boxplot()+
+        geom_boxplot() +
         theme_minimal() + labs(y='', x='Percent of Significant Drugs In Category') + 
-        theme(legend.position='none', legend.title=element_blank())
+        theme(legend.position='none', legend.title=element_blank()) +
+        geom_vline(xintercept=mean(subset(AllBootstraps, AllBootstraps$PlottingGroup == 'Any Category')$FracSig), linetype="dashed")
     ggsave(paste0(PlotDir, 'RegCoefBootstrappedByDrugGroupSize_CCLE.pdf' ), width=6, height=5, units='in')
 
 }
