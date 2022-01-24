@@ -754,7 +754,7 @@ PlotBootstrappedNegativelyAssociatedDrugs = function(df) {
     df$SigGroups = ifelse(df$pVal < 0.05, 'Significant', 'NotSignificant')
     df$EstimateGroups = ifelse(df$Estimate > 0, 'Increase In Viability With Load','Decrease In Viability With Load')
     CountsPerDrug = data.frame(table(as.character(df$PlottingGroup)))
-    df= merge(df, CountsPerDrug, by.x='PlottingGroup', by.y='Var1') 
+    df = merge(df, CountsPerDrug, by.x='PlottingGroup', by.y='Var1') 
     df = subset(df, (df$Estimate < 0))
     # Bootstrap 50 drugs from each broad group 100 times; How often is the group significant? 
     set.seed(123)
@@ -778,7 +778,8 @@ PlotBootstrappedNegativelyAssociatedDrugs = function(df) {
     Rank$FracSigRank = rank(Rank$mean)
     Rank = Rank[order(Rank$FracSigRank),]
     AllBootstraps$PlottingGroup2 = factor(AllBootstraps$PlottingGroup, levels=as.character(Rank$PlottingGroup))
-  
+    GroupsWithZero = as.character(data.frame(AllBootstraps %>% group_by(PlottingGroup) %>% summarise(med=median(FracSig)) %>% filter(med == 0))$PlottingGroup)
+    AllBootstraps = AllBootstraps[!(AllBootstraps$PlottingGroup %in% GroupsWithZero),] # Remove categories with 0 sig assoc with load
     # Box plot of all boostraps
     PlotOfCounts = ggplot(AllBootstraps, aes(y = PlottingGroup2, x=FracSig, color=PlottingGroup2, fill=PlottingGroup2)) + 
         geom_boxplot() +
