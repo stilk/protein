@@ -393,12 +393,13 @@ def GetFigure(Figure):
         SetUpPlottingPackages(); ro.r.PlotJacknifedshRNAAcrossGroups(df)
     elif Figure == 'AllDrugsByLoad':
         df = GetFigureInput('AllDrugsByLoad')
-        SetUpPlottingPackages(); ro.r.PlotRegressionForAllDrugs(df)
+        SetUpPlottingPackages(); ro.r.PlotFractionOfSigDrugsForAll(df)
         #SetUpPlottingPackages(); ro.r.PlotRegressionForAllDrugs(df)
     elif Figure == 'RankExpressionByIndividual':
         df = GetFigureInput('RankExpressionByIndividual')
         SetUpPlottingPackages(); ro.r.PlotRankingByIndividuals(df)
-
+    elif Figure == 'BootstrappedDrugs':
+        SetUpPlottingPackages(); ro.r.PlotBootstrappedNegativelyAssociatedDrugs()
 
         
     # elif Figure == 'DeltaPSI':     
