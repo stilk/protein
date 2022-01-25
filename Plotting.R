@@ -729,33 +729,20 @@ GetAnnotatedMOA = function() {
 
 }
 
-PlotAllNegativelyAssociatedDrugs = function(df) {
-    df = GetAnnotatedMOA()
+PlotFractionOfSigDrugsForAll = function(df) {
     df$log10pval= log10(as.numeric(as.character(df$pVal)))
     df$SigGroups = ifelse(df$pVal < 0.05, 'Significant', 'NotSignificant')
-    df$EstimateGroups = ifelse(df$Estimate > 0, 'Increase In Viability With Load','Decrease In Viability With Load')
-    CountsPerDrug = data.frame(table(as.character(df$PlottingGroup)))
-    df= merge(df, CountsPerDrug, by.x='PlottingGroup', by.y='Var1') 
-    df = subset(df, (df$Estimate < 0))
-    # Group by large categories and count how many drugs are significant
-    PlotFactors = data.frame(df %>% group_by(PlottingGroup, SigGroups) %>% summarise(count = n()))
-    PlotFactors = reshape(PlotFactors, idvar = "PlottingGroup", timevar = "SigGroups", direction = "wide")
-    PlotFactors[is.na(PlotFactors)] = 0 # replace na with 0 
-    PlotFactors$PercentSignificantDrugs = PlotFactors$count.Significant/(PlotFactors$count.Significant + PlotFactors$count.NotSignificant)
-    # Factor variables to plot by most effective drugs first
-    PlotFactors$EstimateRank = rank(PlotFactors$PercentSignificantDrugs)
-    PlotFactors = PlotFactors[order(PlotFactors$EstimateRank),]
-    PlotFactors$PlottingGroup2 = factor(PlotFactors$PlottingGroup, levels=as.character(PlotFactors$PlottingGroup))
-    # Plot results
-    PlotOfCounts = ggplot(PlotFactors, aes(y = PlottingGroup2, x=PercentSignificantDrugs * 100, color=PlottingGroup2, fill=PlottingGroup2)) + 
-        geom_bar(stat="identity") +
-        theme_minimal() + labs(y='Number of Drugs', x='Percent of Significant Drugs In Category') + 
-        theme(legend.position='none', legend.title=element_blank())
-    ggsave(paste0(PlotDir, 'RegCoefSigVsNonSig_CCLE.pdf' ), width=6, height=6, units='in')
-
+    df$EstimateGroups = ifelse(df$Estimate > 0, 'Increase In\nViability\nWith Load','Decrease In\nViability\nWith Load')
+    #print(head(df))
+    PlotOfCounts = ggplot(df, aes(x = EstimateGroups, color=SigGroups, fill=SigGroups)) + geom_bar() +
+        theme_minimal() + labs(y='Number of Drugs', x='') + scale_colour_manual(values=c('grey','blue')) +
+        scale_fill_manual(values=c('grey','blue')) +
+        theme(legend.position='bottom', legend.title=element_blank())# +
+       # guides(fill=guide_legend(nrow=2)) + guides(colour = guide_legend(nrow = 2))
+    ggsave(paste0(PlotDir, 'RegCoefAllDrugs_CCLE.pdf' ), width=3, height=5, units='in')
 }
 
-PlotBootstrappedNegativelyAssociatedDrugs = function(df) { 
+PlotBootstrappedNegativelyAssociatedDrugs = function() { 
 
     df = GetAnnotatedMOA()
     df$log10pval= log10(as.numeric(as.character(df$pVal)))
@@ -791,7 +778,7 @@ PlotBootstrappedNegativelyAssociatedDrugs = function(df) {
     # Box plot of all boostraps
     PlotOfCounts = ggplot(AllBootstraps, aes(y = PlottingGroup2, x=FracSig, color=PlottingGroup2, fill=PlottingGroup2)) + 
         geom_boxplot() +
-        theme_minimal() + labs(y='', x='Percent of Significant Drugs In Category') + 
+        theme_minimal() + labs(y='', x='Fraction of Significant Drugs In Category') + 
         theme(legend.position='none', legend.title=element_blank()) +
         geom_vline(xintercept=mean(subset(AllBootstraps, AllBootstraps$PlottingGroup == 'Any Category')$FracSig), linetype="dashed")
     ggsave(paste0(PlotDir, 'RegCoefBootstrappedByDrugGroupSize_CCLE.pdf' ), width=6, height=5, units='in')
