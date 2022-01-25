@@ -42,8 +42,8 @@ def GetGeneAnnotationsOfInterest():
     corum = corum = pd.read_csv('/labs/ccurtis2/tilk/02_DNDS/separateDatabaseFiles/CORUM/coreComplexes.txt.zip', sep='\t')
     chap = pd.read_csv('/labs/ccurtis2/tilk/09_PROTEIN/Human_Chaperome_TableS1A_PMID_29293508', sep='\t')
     groups = pd.concat([
-        pd.DataFrame({'Group': 'Cytoplasmic Ribosomes','subgroup' : 'Translation', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, cytoplasmic')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
-        pd.DataFrame({'Group': 'Mitochondrial Ribosomes', 'subgroup' : 'Translation', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, mitochondrial')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
+        pd.DataFrame({'Group': 'Cytoplasmic Ribosomes','subgroup' : 'Ribosomes', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, cytoplasmic')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
+        pd.DataFrame({'Group': 'Mitochondrial Ribosomes', 'subgroup' : 'Ribosomes', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, mitochondrial')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
         pd.DataFrame({'Group': '20S Core' , 'subgroup' : 'Proteasome', 'Hugo' : corum[corum['ComplexName'] == '20S proteasome']['subunits(Gene name)'].str.split(';', expand=True).melt()['value']  }),
         pd.DataFrame({'Group': '19S Regulatory Particle' , 'subgroup' : 'Proteasome', 'Hugo' : ['PSMC1','PSMC2','PSMC3','PSMC4','PSMC5','PSMC6', 'PSMD1','PSMD2','PSMD3','PSMD4','PSMD6','PSMD7','PSMD8','PSMD11','PSMD12','PSMD13','PSMD14'] }),
         pd.DataFrame({'Group': 'Mitochondrial Chaperones' , 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'MITO') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
@@ -83,11 +83,14 @@ def GetFigureInput(FigureNum):
         tcga = pd.read_csv(InputDir + 'Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGA').assign(Dataset='TCGA')
         ccle = pd.read_csv(InputDir + 'Regression/ExpressionOLSRegressionEstimatesKsKaCCLE').assign(Dataset='CCLE')
         all = pd.concat([tcga[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']], 
-                    ccle[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']]])
+            ccle[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']]]).rename(columns={'Pr...t..':'pval'})
         all['Coefficient'] = all['Unnamed: 0'].str.replace('\d+', '')
         all = all[all['Coefficient'] == 'LogScore']
+        quantile = all.groupby(['Dataset'])['Estimate'].quantile([0.05,0.5,0.95]).reset_index().rename(columns={'level_1':'Group'}).assign(
+        subgroup='Quantile').assign(pval = 0).assign(GeneName='')
         groups = GetGeneAnnotationsOfInterest()
         all = all.merge(groups, left_on='GeneName', right_on='Hugo')
+        all = pd.concat([all[['Dataset','Group','Estimate','subgroup','pval','GeneName']], quantile])
         return(ConvertPandasDFtoR(all.astype(str))) 
     elif FigureNum == 'GlobalTranscription_TCGA': 
         df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_AvgGeneExpForAllCancerTypes')
@@ -306,6 +309,7 @@ def GetFigureInput(FigureNum):
     elif FigureNum == 'AllDrugsByLoad':
         df = pd.read_csv(os.getcwd() + '/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE')
         df = df[df['Coefficient'] == 'LogScore'] 
+        #annotations = pd.read_csv(os.getcwd() + '/Data/Raw/Drug/Annotations/drug.target.interaction.tsv.gz', sep='\t')
         # Freq = df['subgroup'].value_counts().reset_index()
         # Freq['PlottingGroup'] = np.where(Freq['subgroup'] < 4,'Other', Freq['index'])
         # df = df.merge(Freq[['index','PlottingGroup']], left_on='subgroup',right_on='index')
@@ -314,10 +318,18 @@ def GetFigureInput(FigureNum):
         # CountsOfSubgroups = CountsOfSubgroups[CountsOfSubgroups['subgroup'] > 5]
         # df = df[df['subgroup'].isin(CountsOfSubgroups['index'])]
         return(ConvertPandasDFtoR(df))
-
-
-
-
+    elif FigureNum == 'RankExpressionByIndividual':
+        exp = GetExpressionData(Dataset='TCGA')#.drop(columns={'type','MutLoad'})
+        Mean=exp.groupby(['GeneName']).Value.transform('mean')    
+        Std=exp.groupby(['GeneName']).Value.transform('std')
+        exp['NormVal'] = (exp['Value'] - Mean) / Std
+        #exp['GeneExpRank'] = exp.groupby(['GeneName'])['Value'].rank().astype(int) # Rank expression of all genes
+        exp = exp.merge(AnnotateMutationalLoad(GetMutations('TCGA'), MutType='KsKa'), left_on='Barcode', right_on='Barcode')
+        exp = exp.merge(GetTissueType('TCGA'), left_on='Barcode', right_on='Barcode')
+        exp = exp.merge(GetGeneAnnotationsOfInterest(), left_on=['GeneName'], right_on=['Hugo'])
+        # exp = exp.groupby(['Barcode','Group','subgroup','type','MutLoad'])['NormVal'].mean().reset_index() # avg rank of all genes in group
+        # exp['SingleRank'] = exp.groupby(['Group','subgroup'])['GeneExpRank'].rank() # re-rank exp avgs into one score
+        return(ConvertPandasDFtoR(exp))
 
 
 
@@ -337,13 +349,13 @@ def GetFigure(Figure):
         ro.r.PlotRegCoefPerGroup(GetFigureInput('Protein_CCLE'), 'Protein_CCLE')
     elif Figure == 'Protein_Exp':
         ro.r.PlotProtein(GetFigureInput('Protein_Exp'))
-    elif FigureNum == 'AS_Delta_PSI':
+    elif Figure == 'AS_Delta_PSI':
         out = GetFigureInput('AS_Delta_PSI')
         SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
-    elif FIgure == 'RNAi_CCLE':
+    elif Figure == 'RNAi_CCLE':
         foo = GetFigureInput('Grouped_RNAi')
         SetUpPlottingPackages(); ro.r.PlotshRNA(foo)
-    elif FigureNum == 'Drug_CCLE':
+    elif Figure  == 'Drug_CCLE':
         ro.r.PlotDrug(GetFigureInput('Drug_CCLE'))
     elif Figure == 'AllIndividualGene_TCGA':
         ro.r.PlotRefCoefAllGenes(GetFigureInput('AllByGene_TCGA'))
@@ -382,8 +394,10 @@ def GetFigure(Figure):
     elif Figure == 'AllDrugsByLoad':
         df = GetFigureInput('AllDrugsByLoad')
         SetUpPlottingPackages(); ro.r.PlotRegressionForAllDrugs(df)
-
-
+        #SetUpPlottingPackages(); ro.r.PlotRegressionForAllDrugs(df)
+    elif Figure == 'RankExpressionByIndividual':
+        df = GetFigureInput('RankExpressionByIndividual')
+        SetUpPlottingPackages(); ro.r.PlotRankingByIndividuals(df)
 
 
         
@@ -407,4 +421,4 @@ def GetFigure(Figure):
 # SetUpPlottingPackages(); GetFigure(Figure='Protein_Exp')
 
 
-
+SetUpPlottingPackages(); GetFigure(Figure='RankExpressionByIndividual')
