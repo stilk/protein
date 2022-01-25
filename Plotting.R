@@ -5,6 +5,7 @@ library(dplyr)
 library(ggpubr)
 library(boot)
 library(tidyr)
+library(ggridges)
 
 BootAS = function(df, NumBoot=100) {
     out = data.frame()
@@ -304,23 +305,30 @@ PlotRefCoefAllGenes = function(df) {
 }
 
 PlotRegCoefPerGroup = function(df) {
-    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
-    df$NegLog10Pval = -log10(as.numeric(as.character(df$AdjPval)))
     df$Dataset = gsub('TCGA', 'TCGA (Human Tumors)', df$Dataset); df$Dataset = gsub('CCLE', 'CCLE (Cancer Cell Lines)', df$Dataset)
     df$Dataset2 = factor(df$Dataset, levels=c('TCGA (Human Tumors)','CCLE (Cancer Cell Lines)'))
+    quantile = subset(df, df$subgroup == 'Quantile')
+    df = subset(df, df$subgroup != 'Quantile')
+    df$AdjPval = p.adjust(df$pval, method= 'fdr')
+    df$NegLog10Pval = -log10(as.numeric(as.character(df$AdjPval)))
     df$SortedLevel = factor(df$Group, levels=c('Mitochondrial Chaperones', 'ER Chaperones','Small HS','HSP 100','HSP 90',
                 'HSP 70','HSP 60', 'HSP 40','20S Core','20S Catalytic Core','Immunoproteasome Core','Immunoproteasome Catalytic Core',
                  '11S Regulatory Particle', '19S Regulatory Particle','Mitochondrial Ribosomes', 'Cytoplasmic Ribosomes'))
+        
     Estimate = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(Estimate)), color=subgroup)) +  geom_boxplot() +
-                 theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='none') +
-                 geom_vline(xintercept=0, linetype='dashed', col = 'black') + facet_wrap(~Dataset2, scales='free_x') +
-                 theme(strip.text = element_text(face="bold", size=12))
+                theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='none') +
+                facet_wrap(~Dataset2, scales='free_x') +
+                #geom_vline(data=filter(quantile, Group == '0.05'), aes(xintercept=Estimate))+
+                #geom_vline(xintercept=0, linetype='dashed', col = 'black') + 
+                geom_vline(data = quantile, aes(xintercept = as.numeric(as.character(Estimate))), alpha=0.5, color='grey', size=1) +
+                
+                theme(strip.text = element_text(face="bold", size=12))
 
     Rank = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) +  geom_boxplot() +
                 theme_minimal() + labs(x='Negative Log10 of Adjusted P-Value', y='') + 
                 theme(legend.position='bottom', legend.title=element_blank()) +
                 #theme(axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())+
-                geom_vline(xintercept= -log10(0.05), linetype='dashed', col = 'black') + facet_wrap(~Dataset2, scales='free_x') +
+                geom_vline(xintercept= -log10(0.05), alpha=0.5, size=1, col = 'grey') + facet_wrap(~Dataset2, scales='free_x') +
                 theme(strip.text = element_text(face="bold", size=12))
     Combined = plot_grid(Estimate, Rank, rel_heights=c(0.85, 1), ncol = 1) 
     #plot_grid(Title, Combined, ncol=1, rel_heights=c(0.1, 1)) 
@@ -789,3 +797,79 @@ PlotBootstrappedNegativelyAssociatedDrugs = function(df) {
     ggsave(paste0(PlotDir, 'RegCoefBootstrappedByDrugGroupSize_CCLE.pdf' ), width=6, height=5, units='in')
 
 }
+
+
+PlotRankingByIndividuals = function(df) {
+    # print(head(df))
+    # #df = df[df$Group %in% c('HSP 60','HSP 100'),]
+    # print(head(df))
+ # by type
+ library(umap)
+    print(head(df))
+    pca_in = spread(df[c('Barcode','GeneName','NormVal')], key = Barcode, value = NormVal)
+    row.names(pca_in) = pca_in$GeneName; pca_in$GeneName=NULL
+    print(head(t(pca_in)))
+    #pca_in = as.numeric(as.character(pca_in))
+    df_pca = umap(t(pca_in))
+    print(head(data.frame(df_pca$layout)))
+    df_out = data.frame(df_pca$layout); 
+    print(head(df_out)); df_out$Barcode = row.names(df_out)
+    df_out = merge(df_out, unique(df[c('Barcode','type')]), by='Barcode')
+    write.table(df_out, '/home/tilk/UMAP_CancerType', quote=F, sep='\t')
+    #print(df_out)
+    PCAPlot = ggplot(df_out, aes(x=X1,y=X2,color=type )) + geom_point(size=4) + theme_minimal()
+
+
+
+    print(head(df))
+    pca_in = spread(df[c('Barcode','GeneName','NormVal')], key = Barcode, value = NormVal)
+    row.names(pca_in) = pca_in$GeneName; pca_in$GeneName=NULL
+    print(head(t(pca_in)))
+    #pca_in = as.numeric(as.character(pca_in))
+    df_pca = umap((pca_in))
+    print(head(data.frame(df_pca$layout)))
+    df_out = data.frame(df_pca$layout); 
+    print(head(df_out)); df_out$GeneName = row.names(df_out)
+    df_out = merge(df_out, unique(df[c('GeneName','Group')]), by='GeneName')
+    write.table(df_out, '/home/tilk/UMAP_CancerType')
+    #print(df_out)
+    PCAPlot = ggplot(df_out, aes(x=X1,y=X2,color=Group)) + geom_point(size=4) + theme_minimal()
+
+
+
+
+
+
+# # by categories
+
+#     print(head(df))
+#     pca_in = spread(df[c('Barcode','GeneName','NormVal')], key = Barcode, value = NormVal)
+#     row.names(pca_in) = pca_in$GeneName; pca_in$GeneName=NULL
+#     print(head(t(pca_in)))
+#     #pca_in = as.numeric(as.character(pca_in))
+#     df_pca = prcomp(pca_in)
+#     df_out = as.data.frame(df_pca$x); df_out$GeneName = row.names(df_out)
+#     df_out = merge(df_out, unique(df[c('GeneName','Group')]), by='GeneName')
+#     #print(df_out)
+#     PCAPlot = ggplot(df_out, aes(x=PC1,y=PC2,color=Group )) + geom_point(size=4) + theme_minimal()
+
+
+
+
+    #df = subset(df, df$Group == '19S Regulatory Particle')
+    
+    # RankingDF$ExpRank = rank(RankingDF$GeneExpRank)
+    # RankingDF = RankingDF[order(RankingDF$ExpRank),]
+    # print(head(RankingDF))
+    #df= df[order(df$SingleRank),]
+   # df$BarcodeRanked = factor(df$Barcode, levels=unique(df$Barcode))
+
+
+    # print(head(df_out))
+    # RankPlot = ggplot(df, aes(x = BarcodeRanked, y = (as.numeric(as.character(NormVal))), color=Group, fill = Group)) +
+    #     geom_point() + facet_wrap(~Group,ncol=4) + 
+    #     theme(axis.text.x=element_blank(),axis.ticks.x=element_blank(), legend.position='none')
+    ggsave(paste0(PlotDir, 'RankingExpressionByGroupsUMAP_TCGA.pdf' ))
+
+}
+
