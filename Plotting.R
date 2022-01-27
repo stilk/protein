@@ -184,6 +184,193 @@ PlotGlobalDownAndUpregulation= function(df) {
 
 }
 
+PlotHorizontalGSEForBothTCGA = function(df) {
+    df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
+    df = df[df$source %in% c('CORUM','KEGG'),]
+    # Match CORUM terms to broader categories
+    df$grouping = ''
+    df[grep('ribo',df[,1]),]$grouping = 'Protein' 
+    df[grep('roteasome|PA',df[,1]),]$grouping = 'Protein' 
+    df[grep('CCT',df[,1]),]$grouping = 'Protein'
+    df[grep('synthesome|BRCA|FA|BLM|MCM|RC|BRAFT|DNA-PK',df[,1]),]$grouping = 'DNA Replication/Repair'
+    df[grep('snRNP|plice|SMN|Rnase|Sm|Exosome',df[,1]),]$grouping = 'Transcription'
+    df[grep('RC|CEN|Nup',df[,1]),]$grouping = 'DNA Replication/Repair'
+    df$term_name = gsub('Protein processing in endoplasmic reticulum','Protein processing in ER',df$term_name)
+    df[grep('Ribo|Pro|amino|Phagosome',df[,1]),]$grouping = 'Protein' 
+    df[grep('RNA|Splic|mRNA',df[,1]),]$grouping = 'Transcription' 
+    df[grep('repair|recombination|Cell|replication|sugar|backbone',df[,1]),]$grouping = 'DNA Replication/Repair'
+    df[grep('Apop|senesc|Amyo|Eps|Hum|myoc|Inf|Spin|Leg|cofac|Carb|disease',df[,1]),]$grouping = 'Other'
+    df[grep('Antigen|killer',df[,1]),]$grouping = 'Immune'
+  
+    # Add colors
+    colors = data.frame(
+        grouping = c('Transcription','Protein','DNA Replication/Repair', 'Immune','Other' ),
+        colors = as.character(c('#82CEF5','#3366C7','#3EA612','#F97FA2','#F73036'))
+    )
+    df = merge(df, colors, by='grouping')
+    df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
+    rankingDF = df %>% group_by(grouping) %>% summarise(max = max(negative_log10_of_adjusted_p_value))
+    rankingDF = rankingDF[order(rankingDF$max),]
+    rankingDF$rank = nrow(rankingDF):1
+    df = merge(df, rankingDF, by='grouping')
+    df = df[order(df$rank, -df$negative_log10_of_adjusted_p_value), ]
+    df$ID = 1:nrow(df)
+    df$ID2 = factor(df$ID, levels=df$ID)
+    df$grouping = factor(df$grouping, levels=unique(df$grouping))
+    df$term_name = gsub("\\(.*","",df$term_name) # remove parenthesis for visualization and repeat categories
+    df= df[!duplicated(df$term_name),] # Remove duplicate hits
+    PlotOut = ggplot(df, aes(x=reorder(term_name,-ID), y=negative_log10_of_adjusted_p_value, fill=colors)) +
+        geom_col() +
+        #coord_flip() +
+        facet_grid(~source, scales='free_x', space='free_x')+ 
+        labs(x='', y='Negative Log10 of Adjusted P-Value') + 
+        #scale_fill_brewer(palette="Paired") +
+        scale_fill_identity(guide = "legend", 
+                            labels = unique(df$grouping),
+                            breaks = unique(df$colors))  +
+        # scale_fill_manual(values = df$colors, labels=df$grouping) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.title = element_blank())+
+        theme(strip.text.y = element_blank(), legend.position='bottom') +
+        guides(fill=guide_legend(nrow=1,byrow=TRUE))
+    ggsave(paste0(PlotDir, 'HorizontalRegressionGeneSetEnrichmentGlobalBothSourceCGA.pdf' ), width=13, height=6, units='in') 
+}
+
+PlotCircularCORUMTCGA = function(df) {
+
+    df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
+    df= subset(df, df$source == 'CORUM')
+    # Match CORUM terms to broader categories
+    df$grouping = ''
+    df[grep('ribo',df[,1]),]$grouping = 'Translation' 
+    df[grep('roteasome|PA',df[,1]),]$grouping = 'Protein Degradation' 
+    df[grep('CCT',df[,1]),]$grouping = 'Chaperone'
+    df[grep('synthesome|BRCA|FA|BLM|MCM|RC|BRAFT|DNA-PK',df[,1]),]$grouping = 'DNA Replication/Repair'
+    df[grep('snRNP|plice|SMN|Rnase|Sm|Exosome',df[,1]),]$grouping = 'Transcription'
+    df[grep('RC|CEN|Nup',df[,1]),]$grouping = 'DNA Replication/Repair'
+    # Add colors
+    colors = data.frame(
+        grouping = c('Protein Degradation','Translation','Transcription','Chaperone','DNA Replication/Repair', 'Immune','Other' ),
+        colors = as.character(c('#F7B530','#3EA612','#A3E189','#F73036','#82CEF5','#3366C7','#F97FA2'))
+    )
+    ColorsForGrouping=colors$grouping
+    df = merge(df, colors, by='grouping')
+    df$term_name = gsub("\\(.*","",df$term_name) # remove parenthesis for visualization and repeat categories
+    df= df[!duplicated(df$term_name),] # Remove duplicate hits
+    GapForLegend = 1
+    GroupsForOrdering = colors$grouping
+    df = df %>% 
+        arrange(grouping, -negative_log10_of_adjusted_p_value) %>%
+        arrange(factor(grouping, levels = ColorsForGrouping)) %>%
+        mutate(term_name = factor(term_name, levels = unique(term_name) )) %>%
+        add_row(term_name = rep(NA,GapForLegend), negative_log10_of_adjusted_p_value = rep(NA,GapForLegend)) %>%
+        mutate(ID = 1:(nrow(df) + GapForLegend)) %>%
+        mutate(angle = 90-360*(ID-0.5)/(nrow(df) + 1)) %>%
+        mutate(hjust = ifelse(angle < -90, 1, 0)) %>%
+        mutate(angle = ifelse(angle < -90, angle+180, angle)) %>%  
+        mutate(ID = factor(ID, levels = unique(ID)))
+
+    PlotOut = ggplot(df, aes(x=ID, y=negative_log10_of_adjusted_p_value, fill=colors)) +
+        geom_segment(x = 70, y = 10, xend = 1, yend = 10, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 10
+        geom_segment(x = 70, y = 5, xend = 1, yend = 5, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 5
+        geom_bar(stat='identity') +
+        ylim(0,20)+
+        labs(x='', y='Negative Log10 of Adjusted P-Value') + 
+        #scale_fill_brewer(palette="Paired") +
+        scale_fill_identity(guide = "legend", 
+                            labels = unique(df$grouping),
+                            breaks = unique(df$colors))  +
+        theme_minimal() +
+        theme(
+            axis.text = element_blank(),
+            axis.title = element_blank(),
+            panel.grid = element_blank(),
+            legend.position='none',
+            plot.margin = unit(rep(-1,4), "cm") ) +  # Adjust the margin to make in sort labels are not truncated!
+        #theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.title = element_blank())+
+        #theme(strip.text.y = element_blank(), legend.position='bottom') +
+        #guides(fill=guide_legend(nrow=2,byrow=TRUE)) +
+        geom_text(aes(label = term_name, y = ifelse(negative_log10_of_adjusted_p_value<4,5, negative_log10_of_adjusted_p_value+ GapForLegend), 
+            hjust = hjust, angle = angle), size = 5)+
+          annotate("text", x = rep(nrow(df),2), y = c(5,10), label = c("5","10") , color="grey", size=5 , alpha=1.4, angle=0, fontface="bold", hjust=0.25, vjust=2) + # Add annotation
+ 
+        coord_polar() 
+        print(head(df))
+    ggsave(paste0(PlotDir, 'CircularRegressionGeneSetEnrichmentGlobalCORUMTCGA.pdf' ), width=12, height=12, units='in') 
+
+}
+
+PlotCircularKeggTCGA = function(df) {
+
+    df = subset(df, df$source == 'KEGG')
+    df = df[!grepl("disease", df$term_name),]
+    df = df[!df$term_name %in% c('Amyotrophic lateral sclerosis','Epstein-Barr virus infection','Human T-cell leukemia virus 1 infection',
+                           'Viral myocarditis','Influenza A','Spinocerebellar ataxia','Legionellosis'),]
+    df$grouping = ''
+    df$term_name = gsub('Protein processing in endoplasmic reticulum','Protein processing in ER',df$term_name)
+    df$term_name = gsub('Antigen processing and presentation','Antigen processing\nand presentation',df$term_name)
+    df[grep('Ribo|ER|amino',df[,1]),]$grouping = 'Translation' 
+    df[grep('Proteasome|Phagosome',df[,1]),]$grouping = 'Protein Degradation' 
+    df[grep('RNA|Splic|mRNA',df[,1]),]$grouping = 'Transcription' 
+    df[grep('repair|recombination|Cell|replication|sugar|backbone',df[,1]),]$grouping = 'DNA Replication/Repair'
+    df[grep('Apop|senesc|Amyo|Eps|Hum|myoc|Inf|Spin|Leg|cofac|Carb|disease',df[,1]),]$grouping = 'Other'
+    df[grep('Antigen|killer',df[,1]),]$grouping = 'Immune'
+    colors = data.frame(
+        grouping = c('Protein Degradation','Translation','Transcription','Chaperone','DNA Replication/Repair', 'Immune','Other' ),
+        colors = as.character(c('#F7B530','#3EA612','#A3E189','#F73036','#82CEF5','#3366C7','#F97FA2'))
+    )
+    ColorsForGrouping=colors$grouping
+    df = merge(df, colors, by='grouping')
+    df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
+    rankingDF = df %>% group_by(grouping) %>% summarise(max = max(negative_log10_of_adjusted_p_value))
+    rankingDF = rankingDF[order(rankingDF$max),]
+    rankingDF$rank = nrow(rankingDF):1
+    df = merge(df, rankingDF, by='grouping')
+    df = df[order(df$rank, -df$negative_log10_of_adjusted_p_value), ]
+    df$ID = 1:nrow(df)
+    df$ID2 = factor(df$ID, levels=df$ID)
+    df$grouping = factor(df$grouping, levels=unique(df$grouping))
+    df$term_name = gsub("\\(.*","",df$term_name) # remove parenthesis for visualization and repeat categories
+    df= df[!duplicated(df$term_name),] # Remove duplicate hits
+    df = df[order(df$ID),]
+    GapForLegend = 1
+   
+    df = df %>% 
+        arrange(grouping, -negative_log10_of_adjusted_p_value) %>%
+        arrange(factor(grouping, levels = ColorsForGrouping)) %>%
+        mutate(individual = factor(term_name, levels = unique(term_name))) %>%
+        add_row(term_name = rep(NA,GapForLegend), negative_log10_of_adjusted_p_value = rep(NA,GapForLegend)) %>%
+        mutate(ID = 1:(nrow(df) + GapForLegend)) %>%
+        mutate(angle = 90-360*(ID-0.25)/(nrow(df) + 1)) %>%
+        mutate(hjust = ifelse(angle < -90, 1, 0)) %>%
+        mutate(angle = ifelse(angle < -90, angle+180, angle)) %>%
+        mutate(ID = factor(ID, levels = unique(ID)))
+  
+    
+    PlotOut = ggplot(df, aes(x=ID, y=negative_log10_of_adjusted_p_value, fill=colors)) +
+        geom_segment(x = 70, y = 20, xend = 1, yend = 20, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 20
+        geom_segment(x = 70, y = 15, xend = 1, yend = 15, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 15
+        geom_segment(x = 70, y = 10, xend = 1, yend = 10, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 10
+        geom_segment(x = 70, y = 5, xend = 1, yend = 5, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 5
+        geom_bar(stat='identity') +
+        labs(x='', y='Negative Log10 of Adjusted P-Value') + 
+        #scale_fill_brewer(palette="Paired") +
+        scale_fill_identity(guide = "legend", labels = unique(df$grouping),breaks = unique(df$colors))  +
+        theme_minimal() +
+        theme(axis.text = element_blank(),axis.title = element_blank(), panel.grid = element_blank(),
+            legend.text=element_text(size=14),
+            legend.position='bottom', plot.margin = unit(rep(-1,4), "cm"), legend.title = element_blank()) +  
+        guides(fill=guide_legend(nrow=1,byrow=TRUE)) +
+        geom_text(aes(label = term_name, y = ifelse(negative_log10_of_adjusted_p_value< 6,5, negative_log10_of_adjusted_p_value+ GapForLegend), 
+            hjust = hjust, angle = angle), size = 5)+ 
+            annotate("text", x = rep(nrow(df),4), y = c(5,10,15,20), label = c("5","10","15","20") , 
+            color="grey", size=5 , alpha=1, angle=0, fontface="bold", hjust=0.25, vjust=2) +
+        coord_polar() 
+    ggsave(paste0(PlotDir, 'CircularRegressionGeneSetEnrichmentGlobalKEGGTCGA.pdf' ), width=12, height=14, units='in') 
+
+}
+
+
 PlotGlobalKeggTCGA = function(df) {
     df = subset(df, df$source == 'KEGG')
     df = df[!grepl("disease", df$term_name),]
