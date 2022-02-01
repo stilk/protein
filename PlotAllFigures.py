@@ -8,8 +8,8 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.conversion import localconverter
 from rpy2.robjects.vectors import FloatVector
-from GetData import * 
 from CalculateMetrics import *
+
 
 def SetUpPlottingPackages():
     ggplot = importr('ggplot2')
@@ -86,11 +86,8 @@ def GetFigureInput(FigureNum):
             ccle[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']]]).rename(columns={'Pr...t..':'pval'})
         all['Coefficient'] = all['Unnamed: 0'].str.replace('\d+', '')
         all = all[all['Coefficient'] == 'LogScore']
-        quantile = all.groupby(['Dataset'])['Estimate'].quantile([0.05,0.5,0.95]).reset_index().rename(columns={'level_1':'Group'}).assign(
-        subgroup='Quantile').assign(pval = 0).assign(GeneName='')
         groups = GetGeneAnnotationsOfInterest()
-        all = all.merge(groups, left_on='GeneName', right_on='Hugo')
-        all = pd.concat([all[['Dataset','Group','Estimate','subgroup','pval','GeneName']], quantile])
+        all = all.merge(groups, left_on='GeneName', right_on='Hugo', how='left')
         return(ConvertPandasDFtoR(all.astype(str))) 
     elif FigureNum == 'GlobalTranscription_TCGA': 
         df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_AvgGeneExpForAllCancerTypes')
@@ -288,14 +285,16 @@ def GetFigureInput(FigureNum):
             print(df)
             Out = Out.append(df)
         return(ConvertPandasDFtoR(Out))
-    elif FigureNum == 'JacknifeDrugsCCLE':
+    elif FigureNum == 'JacknifeDrugsCCLE': #fig 3
         DrugsOfInterest = GetDrugResponseData(Screen='primary', AllDrugs=False)[['name','Group','subgroup']].drop_duplicates()
         Out = pd.DataFrame()
         ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLEDrug*'))
         for FileName in ListOfCancerTypes:
             df = pd.read_csv(FileName)
             df = df[df['Coefficient'] == 'LogScore'] 
-            Out = Out.append(df)
+            Out = Out.append(df.drop(columns={'Unnamed: 0'}))
+        df = GetPerDrugRegression().assign(CancerTypeRemoved='All Cancers')
+        Out = Out.append(df)
         return(ConvertPandasDFtoR(Out))
     elif FigureNum == 'JacknifeshRNACCLE':
         Complexes = GetSubsetOfGeneAnnotationsOfInterest()
@@ -304,7 +303,9 @@ def GetFigureInput(FigureNum):
         for FileName in ListOfCancerTypes:
             df = pd.read_csv(FileName)
             df = df[df['Coefficient'] == 'LogScore'] 
-            Out = Out.append(df)
+            Out = Out.append(df.drop(columns={'Unnamed: 0'}))
+        df = GetshRNARegression().assign(CancerTypeRemoved='All Cancers')
+        Out = Out.append(df)
         return(ConvertPandasDFtoR(Out))
     elif FigureNum == 'AllDrugsByLoad':
         df = pd.read_csv(os.getcwd() + '/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE')
@@ -349,7 +350,7 @@ def GetFigure(Figure):
         ro.r.PlotRegCoefPerGroup(GetFigureInput('Protein_CCLE'), 'Protein_CCLE')
     elif Figure == 'Protein_Exp':
         ro.r.PlotProtein(GetFigureInput('Protein_Exp'))
-    elif Figure == 'AS_Delta_PSI':
+    elif Figure == 'AS_Delta_PSI': # Fig 2 
         out = GetFigureInput('AS_Delta_PSI')
         SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
     elif Figure == 'RNAi_CCLE':
@@ -363,9 +364,12 @@ def GetFigure(Figure):
         SetUpPlottingPackages(); ro.r.PlotRefCoefAllGenes(foo)
     elif Figure == 'GlobalGSE_TCGA_Regression':
         ro.r.PlotGlobalGSETCGA(GetFigureInput('GlobalGSE_TCGA_Regression'), 'TCGA_Regression')
+        foo = GetFigureInput('GlobalGSE_TCGA_Regression')
+        #SetUpPlottingPackages(); ro.r.PlotCircularCORUMTCGA(foo)
     elif Figure == 'GlobalGSE_TCGA_Regression_KEGG':
         foo = GetFigureInput('GlobalGSE_TCGA_Regression')
         SetUpPlottingPackages(); ro.r.PlotGlobalKeggTCGA(foo)
+        # ro.r.PlotCircularKeggTCGA(foo)
     elif Figure == 'GlobalGSE_CCLE_Regression':
         ro.r.PlotGlobalGSETCGA(GetFigureInput('GlobalGSE_CCLE_Regression'), 'CCLE_Regression')
     elif Figure == 'DGE_GSE_TCGA':
@@ -390,7 +394,7 @@ def GetFigure(Figure):
         SetUpPlottingPackages(); ro.r.PlotJacknifedDrugsAcrossGroups(df)
     elif Figure == 'JacknifeshRNACCLE':
         df = GetFigureInput('JacknifeshRNACCLE')
-        SetUpPlottingPackages(); ro.r.PlotJacknifedshRNAAcrossGroups(df)
+        §c
     elif Figure == 'AllDrugsByLoad':
         df = GetFigureInput('AllDrugsByLoad')
         SetUpPlottingPackages(); ro.r.PlotFractionOfSigDrugsForAll(df)
