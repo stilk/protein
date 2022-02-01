@@ -429,7 +429,7 @@ PlotGlobalGSETCGA = function(df, Identifier) {
     # Add colors
     colors = data.frame(
         grouping = c('Transcription','Splicing','Chaperones','Translation','Cell Cycle', 'Chromosome Segregation','Proteasome', 'DNA Replication/Repair'),
-        colors = as.character(c('#82CEF5','#3366C7','#A3E189','#3EA612','#F97FA2','#F73036','#F7B530','#FB791E'))
+        colors = as.character(c('#82CEF5','#3366C7','#8937E0','#3EA612','#F97FA2','#F73036','#F7B530','#FB791E'))
     )
     df = merge(df, colors, by='grouping')
     # Rank terms by significance for plotting 
@@ -491,35 +491,77 @@ PlotRefCoefAllGenes = function(df) {
 
 }
 
+
+
 PlotRegCoefPerGroup = function(df) {
+    library(viridis)
     df$Dataset = gsub('TCGA', 'TCGA (Human Tumors)', df$Dataset); df$Dataset = gsub('CCLE', 'CCLE (Cancer Cell Lines)', df$Dataset)
     df$Dataset2 = factor(df$Dataset, levels=c('TCGA (Human Tumors)','CCLE (Cancer Cell Lines)'))
-    quantile = subset(df, df$subgroup == 'Quantile')
-    df = subset(df, df$subgroup != 'Quantile')
     df$AdjPval = p.adjust(df$pval, method= 'fdr')
     df$NegLog10Pval = -log10(as.numeric(as.character(df$AdjPval)))
     df$SortedLevel = factor(df$Group, levels=c('Mitochondrial Chaperones', 'ER Chaperones','Small HS','HSP 100','HSP 90',
                 'HSP 70','HSP 60', 'HSP 40','20S Core','20S Catalytic Core','Immunoproteasome Core','Immunoproteasome Catalytic Core',
                  '11S Regulatory Particle', '19S Regulatory Particle','Mitochondrial Ribosomes', 'Cytoplasmic Ribosomes'))
-        
-    Estimate = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(Estimate)), color=subgroup)) +  geom_boxplot() +
-                theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='none') +
-                facet_wrap(~Dataset2, scales='free_x') +
-                #geom_vline(data=filter(quantile, Group == '0.05'), aes(xintercept=Estimate))+
-                #geom_vline(xintercept=0, linetype='dashed', col = 'black') + 
-                geom_vline(data = quantile, aes(xintercept = as.numeric(as.character(Estimate))), alpha=0.5, color='grey', size=1) +
-                
-                theme(strip.text = element_text(face="bold", size=12))
+    
+    df = df %>% mutate( min = if_else(Dataset == 'CCLE (Cancer Cell Lines)',-0.95,-0.5), # set min/max reg coef in each dataset for plotting x axis
+                        max = if_else(Dataset == 'CCLE (Cancer Cell Lines)',0.95,0.5))
+    df$Estimate = as.numeric(as.character(df$Estimate))
 
-    Rank = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) +  geom_boxplot() +
-                theme_minimal() + labs(x='Negative Log10 of Adjusted P-Value', y='') + 
-                theme(legend.position='bottom', legend.title=element_blank()) +
+    # Plot CCLE reg coef distribution
+    ccle = subset(df, df$Dataset2 == 'CCLE (Cancer Cell Lines)')
+    dens_ccle = data.frame(x= density(ccle$Estimate)$x, y=density(ccle$Estimate)$y) #df
+    quantiles = quantile(ccle$Estimate, prob=c(0, 0.1, 0.25, 0.5, 0.75, 0.9, 1))
+    dens_ccle$quant = factor(findInterval(dens_ccle$x,quantiles))
+
+    Histo_CCLE = ggplot(dens_ccle, aes(x,y)) + geom_line() + geom_ribbon(aes(ymin=0, ymax=y, fill=quant)) + 
+        ggtitle('CCLE (Cancer Cell Lines)') + labs(x='',y='') +  theme(strip.text = element_text(face="bold", size=12))+
+        scale_x_continuous(breaks=quantiles) + scale_fill_brewer(guide="none", palette = "PRGn")+  theme_minimal()+
+        theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) 
+
+    # Plot TCGA reg coef distribution
+    tcga = subset(df, df$Dataset2 == 'TCGA (Human Tumors)')
+    dens_tcga = data.frame(x= density(tcga$Estimate)$x, y=density(tcga$Estimate)$y) #df
+    quantiles = quantile(tcga$Estimate, prob=c(0, 0.1, 0.25, 0.5, 0.75, 0.9, 1))
+    dens_tcga$quant = factor(findInterval(dens_tcga$x,quantiles))
+
+    Histo_TCGA = ggplot(dens_tcga, aes(x,y)) + geom_line() + geom_ribbon(aes(ymin=0, ymax=y, fill=quant)) + 
+        theme(plot.title = element_text(face="bold", size=12))+ ggtitle('TCGA (Human Tumors)') + labs(x='',y='Density') +
+        scale_x_continuous(breaks=quantiles) + scale_fill_brewer(guide="none", palette = "PRGn")+
+        theme_minimal()+ theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+
+
+    Estimate = ggplot(data=na.omit(df), aes(y = SortedLevel, x=Estimate, color=subgroup)) + 
+                geom_vline(xintercept= 0, alpha=0.5, size=1, col = 'grey') + 
+                geom_boxplot() +
+                theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='none') +
+                facet_wrap(~Dataset2, scales='free_x') +  geom_blank(aes(x = min)) + geom_blank(aes(x = max)) +
+                theme(panel.spacing = unit(2, "lines")) +
+                scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
+                #geom_vline(data=filter(quantile, Group == '0.05'), aes(xintercept=Estimate))+
+                #geom_vline(data = quantile, aes(xintercept = as.numeric(as.character(Estimate))), alpha=0.5, color='grey', size=1) +
+                theme(strip.background = element_blank(),strip.text.x = element_blank())
+ 
+
+
+    Rank = ggplot(data=na.omit(df), aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) +  geom_boxplot() +
+                theme_minimal() +  
+                #labs(x=parse(text='Negative Log^10 of Adjusted P-Value'), y='')+
+                labs(x=expression(paste("Negative Lo", g^{10},' of Adjusted P-Value' )), y='')+    
+                theme(panel.spacing = unit(2, "lines")) +
+                scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
+                theme(legend.position='bottom', legend.title=element_blank()) +  geom_blank(aes(x = min)) + geom_blank(aes(x = max)) +
                 #theme(axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())+
                 geom_vline(xintercept= -log10(0.05), alpha=0.5, size=1, col = 'grey') + facet_wrap(~Dataset2, scales='free_x') +
-                theme(strip.text = element_text(face="bold", size=12))
-    Combined = plot_grid(Estimate, Rank, rel_heights=c(0.85, 1), ncol = 1) 
-    #plot_grid(Title, Combined, ncol=1, rel_heights=c(0.1, 1)) 
-    ggsave(paste0(PlotDir, 'RegCoefPerGroups_TCGAandCCCLE.pdf' ), width=6, height=7, units='in')
+                theme(strip.background = element_blank(),strip.text.x = element_blank())
+    
+    Combined =  ggdraw() +
+                draw_plot(Histo_TCGA, x = 0.2, y = 0.75, width = 0.42, height = 0.25) +
+                draw_plot(Histo_CCLE, x = 0.575, y = 0.75, width = 0.42, height = 0.25) +
+                draw_plot(Estimate, x= 0, y= 0.45, width= 1 , height = 0.35) +
+                draw_plot(Rank, x= 0 , y= 0, width= 1, height = 0.45) 
+
+    ggsave(paste0(PlotDir, 'RegCoefPerGroups_TCGAandCCCLE.pdf' ), width=7, height=7, units='in')
 }
 
 PlotDeltaPSI = function(df) {
