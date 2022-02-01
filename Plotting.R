@@ -80,7 +80,7 @@ VisualizeAllASThresholds = function(AS_Type='RI') {
 VisualizeAS = function() {
     Dir = '/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
     df = read.table('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8' ,sep=',', header=T)
-    df$Bin = cut(df$MutLoad, breaks=c(0,10,100,1000,50000), labels=c('0-10','10-100','100-1000','1000->10,000'))
+    df$Bin = cut(df$MutLoad, breaks=c(0,10,100,1000,50000), labels=c('0 - 10','10 - 100','100 - 1000','1000 - >10,000'))
     df = na.omit(df)
     df$FractionNMD= df$True/(df$False + df$True)
     foo = df %>%  group_by(Bin) %>% sample_frac(1, replace=TRUE) %>% 
@@ -88,15 +88,21 @@ VisualizeAS = function() {
                     group_by(Bin) %>% 
                     summarize(fraction = retained/(retained + not_retained))
     booted= BootAS(df)
+
     booted_CI = data.frame(booted %>% group_by(Bin) %>% summarise(mean = mean(fraction, na.rm = TRUE), sd = sd(fraction, na.rm = TRUE), n= n()) %>%
                 mutate(se = sd / sqrt(n), lower.ci = mean - qt(1 - (0.05 / 2), n - 1) * se, upper.ci = mean + qt(1 - (0.05 / 2), n - 1) * se))
     PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=1)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
-        geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2, position=position_dodge(.9)) +
-        labs(y='Under-expressed Transcripts With Intron Retention \nAll Transcripts With Intron Retention', x= 'Number of Protein Coding Mutations')
-    ggsave(paste0(PlotDir, 'AS_RI_PerTumor_PSI_TCGA.pdf' ), width=5, height=4, units='in') 
+        geom_ribbon(aes(ymin=upper.ci, ymax=lower.ci), alpha=.7, position=position_dodge(.9)) +
+        labs(y=expression(atop(underline("Under-expressed Transcripts With Intron Retention"), paste("All Transcripts With Intron Retention"))),
+             x= 'Number of Protein Coding Mutations')
+    ggsave(paste0(PlotDir, 'AS_RI_PerTumor_PSI_TCGA.pdf' ), width=4.5, height=6, units='in') 
 
 }
+
+
+
+expression(paste(frac(Under-expressed Transcripts With Intron Retention,All Transcripts With Intron Retention)))
 
 
 AddPercentileRank = function(df) {
