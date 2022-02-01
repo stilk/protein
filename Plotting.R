@@ -373,6 +373,75 @@ PlotRegCoefPerGroup = function(df) {
     ggsave(paste0(PlotDir, 'RegCoefPerGroups_TCGAandCCCLE.pdf' ), width=7, height=7, units='in')
 }
 
+
+PlotDeltaPSICircular = function(df) {
+
+    df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
+    df$Group = gsub('PosPSI','More IR\n(High vs. Low)', df$Group)
+    df$Group = gsub('NegPSI','Less IR\n(High vs. Low)', df$Group)
+    df$term_name = gsub('subunit, cytoplasmic','subunit,\ncytoplasmic',df$term_name)
+    df$term_name = gsub('Capped ','Capped\n',df$term_name)
+    df$term_name = gsub('Containing ','Containing\n',df$term_name)
+    df$term_name = gsub(' Termination','\nTermination',df$term_name)
+    df$term_name = gsub('Splicing -','Splicing -\n',df$term_name)
+    to_add = setNames(data.frame( matrix(NA, 4*2, ncol(df))), colnames(df)) # Add empty space between groups
+    to_add$Group = rep(unique(df$Group), each=4)
+    df = rbind(df, to_add) %>% arrange(Group)
+    df$term_name = gsub("\\(.*","",df$term_name) # remove parenthesis for visualization and repeat categories
+    df= df[!duplicated(df$term_name),] # Remove duplicate hits
+    GapForLegend=1
+
+    # Add angles for lables in bar plot and sort by value
+    df = df %>% 
+        arrange(Group, source, -negative_log10_of_adjusted_p_value) %>%
+        #arrange(factor(source, levels = unique(source))) %>%
+        mutate(individual = factor(term_name, levels = unique(term_name))) %>%
+        add_row(term_name = rep(NA,GapForLegend), negative_log10_of_adjusted_p_value = rep(NA,GapForLegend)) %>%
+        mutate(ID = 1:(nrow(df) + GapForLegend)) %>%
+        mutate(angle = 90-360*(ID-0.25)/(nrow(df) + 1)) %>%
+        mutate(hjust = ifelse(angle < -90, 1, 0)) %>%
+        mutate(angle = ifelse(angle < -90, angle+180, angle)) %>%
+        mutate(ID = factor(ID, levels = unique(ID)))
+  
+  
+        # prepare a data frame for lines in each group
+        base_data = na.omit(df) %>% 
+        group_by(Group) %>% 
+        summarize(start=min(as.numeric(ID)), end=max(as.numeric(ID)) + 0.55) %>% 
+        rowwise() %>% 
+        mutate(title=mean(c(start, end)))
+        
+  
+    
+    PlotOut = ggplot(df, aes(x=ID, y=negative_log10_of_adjusted_p_value, fill=source)) +
+        geom_segment(x = 70, y = 8, xend = 1, yend = 8, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 20
+        geom_segment(x = 70, y = 6, xend = 1, yend = 6, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 15
+        geom_segment(x = 70, y = 4, xend = 1, yend = 4, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 10
+        geom_segment(x = 70, y = 2, xend = 1, yend = 2, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 5
+        geom_bar(stat='identity') + 
+        labs(x='', y='Negative Log10 of Adjusted P-Value') + 
+        scale_fill_identity(guide = "legend", labels = unique(df$grouping),breaks = unique(df$colors))  +
+        theme_minimal() + ylim(-4,10) + 
+        theme(axis.text = element_blank(),axis.title = element_blank(), panel.grid = element_blank(),
+            legend.text=element_text(size=14),
+            legend.position='bottom', plot.margin = unit(rep(-1,4), "cm"), legend.title = element_blank()) +  
+        guides(fill=guide_legend(nrow=1,byrow=TRUE)) +
+        geom_text(aes(label = term_name, y = ifelse(negative_log10_of_adjusted_p_value< 1,6, negative_log10_of_adjusted_p_value + GapForLegend), 
+            hjust = hjust, angle = angle), size = 5)+ 
+            annotate("text", x = rep(nrow(df),4), y = c(2,4,6,8), label = c("5","10","15","20") , 
+            color="grey", size=8 , alpha=1, angle=0, fontface="bold", hjust=0.5, vjust=2) +
+        coord_polar() + scale_fill_manual("legend", values = c('#F59F1A','#3279D8')) +
+          # Add base line information
+        geom_segment(data=base_data, aes(x = start, y = -0.5, xend = end, yend = -0.5), colour = "black", alpha=0.8, 
+            size=0.6 , inherit.aes = FALSE )  + 
+        geom_text(data=base_data, aes(x = title, y = -2, label=Group), hjust=c(0.6,0.5), vjust=c(0.3,0.5), colour = "black", 
+            alpha=0.8, angle=60,size=5, inherit.aes = FALSE)
+ 
+    
+    ggsave(paste0(PlotDir, 'Circular_AS_Delta_PSI_IntonRetention_TCGA.pdf' ), width=12, height=20, units='in')
+}
+
+
 PlotDeltaPSI = function(df) {
     print(df)
     df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
