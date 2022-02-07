@@ -83,11 +83,14 @@ def GetFigureInput(FigureNum):
         tcga = pd.read_csv(InputDir + 'Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGA').assign(Dataset='TCGA')
         ccle = pd.read_csv(InputDir + 'Regression/ExpressionOLSRegressionEstimatesKsKaCCLE').assign(Dataset='CCLE')
         all = pd.concat([tcga[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']], 
-            ccle[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']]]).rename(columns={'Pr...t..':'pval'})
+                         ccle[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']]]).rename(columns={'Pr...t..':'pval'})
         all['Coefficient'] = all['Unnamed: 0'].str.replace('\d+', '')
         all = all[all['Coefficient'] == 'LogScore']
+        quantile = all.groupby(['Dataset'])['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'level_1':'Group'}).assign(
+        subgroup='Quantile').assign(pval = 0).assign(GeneName='')
         groups = GetGeneAnnotationsOfInterest()
-        all = all.merge(groups, left_on='GeneName', right_on='Hugo', how='left')
+        all = all.merge(groups, left_on='GeneName', right_on='Hugo')
+        all = pd.concat([all[['Dataset','Group','Estimate','subgroup','pval','GeneName']], quantile])
         return(ConvertPandasDFtoR(all.astype(str))) 
     elif FigureNum == 'GlobalTranscription_TCGA': 
         df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_AvgGeneExpForAllCancerTypes')
@@ -343,7 +346,7 @@ def GetFigure(Figure):
         foo=GetFigureInput('Stability_DeltaG')
         SetUpPlottingPackages()
         ro.r.PlotDeltaGPerTumor(foo)
-    elif Figure == 'Groups_CCLEAndTCGA':
+    elif Figure == 'Groups_CCLEAndTCGA': # Fig 2
         all = GetFigureInput('Groups_CCLEAndTCGA')
         SetUpPlottingPackages(); ro.r.PlotRegCoefPerGroup(all)
     elif Figure == 'Protein_CCLE':
@@ -353,6 +356,8 @@ def GetFigure(Figure):
     elif Figure == 'AS_Delta_PSI': # Fig 2 
         out = GetFigureInput('AS_Delta_PSI')
         SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
+    elif Figure == 'AS_PSI': #Fig 2
+        SetUpPlottingPackages(); ro.r.VisualizeAS()
     elif Figure == 'RNAi_CCLE':
         foo = GetFigureInput('Grouped_RNAi')
         SetUpPlottingPackages(); ro.r.PlotshRNA(foo)
@@ -394,7 +399,7 @@ def GetFigure(Figure):
         SetUpPlottingPackages(); ro.r.PlotJacknifedDrugsAcrossGroups(df)
     elif Figure == 'JacknifeshRNACCLE':
         df = GetFigureInput('JacknifeshRNACCLE')
-        §c
+        SetUpPlottingPackages(); ro.r.PlotJacknifedshRNAAcrossGroups(df)
     elif Figure == 'AllDrugsByLoad':
         df = GetFigureInput('AllDrugsByLoad')
         SetUpPlottingPackages(); ro.r.PlotFractionOfSigDrugsForAll(df)
