@@ -10,9 +10,9 @@ library(ggridges)
 BootAS = function(df, NumBoot=100) {
     out = data.frame()
     for (i in 1:NumBoot) {
-        rep = data.frame(df %>% group_by(Bin) %>% sample_frac(1, replace=TRUE) %>% 
+        rep = data.frame(df %>% group_by(Bin, AS, Threshold) %>% sample_frac(1, replace=TRUE) %>% 
                     summarize(retained = sum(True), not_retained = sum(False)) %>% 
-                    group_by(Bin) %>% 
+                    group_by(Bin,AS, Threshold) %>% 
                     summarize(fraction = retained/(retained + not_retained)))
         rep$num = i
         out = rbind(out, rep)
@@ -31,7 +31,7 @@ VisualizeAllAS = function(Threshold='0.8') {
         df = rbind(tmp, df)
     }
     df$Bin = cut(df$MutLoad, breaks=c(0,10,100,1000,50000), labels=c('0-10','10-100','100-1000','1000->10,000'))
-    df = na.omit(df)
+    df = na.omit(df); df$Threshold=Threshold
     df$FractionNMD= df$True/(df$False + df$True)
     booted= BootAS(df)
     booted_CI = data.frame(booted %>% group_by(Bin, AS) %>% summarise(mean = mean(fraction, na.rm = TRUE), sd = sd(fraction, na.rm = TRUE), n= n()) %>%
@@ -39,11 +39,9 @@ VisualizeAllAS = function(Threshold='0.8') {
     PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=AS, color=AS)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
         geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2) +
-        labs(y='Under-expressed Transcripts With AS Event \nAll Transcripts With AS Event',
-         x= 'Number of Protein Coding Mutations')
-
-    ggsave(paste0(PlotDir, 'AS_RI_AllASType_TCGA.pdf' ), width=8, height=5, units='in') 
-
+        labs(y=expression(atop(underline("Under-expressed Transcripts With AS Event"), 
+             paste("All Transcripts With AS Event"))), x= 'Number of Protein Coding Mutations', color='')
+    ggsave(paste0(PlotDir, 'AS_RI_AllASType_TCGA.pdf' ), width=5, height=5, units='in') 
 
 }
 
@@ -55,24 +53,24 @@ VisualizeAllAS = function(Threshold='0.8') {
 VisualizeAllASThresholds = function(AS_Type='RI') {
     Dir = '/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
     Thresholds = c('0.5','0.6','0.7','0.8','0.9')
-    df = data.frame()
+    Combined = data.frame()
     for (T in Thresholds) {
         df = read.table(paste0(Dir, 'TCGA_',AS_Type,'_Counts_ThresholdByPSI_', T), sep=',', header=TRUE)
-        df$Thresholds = T
-        df = rbind(Combined, df)
+        df$Threshold = T
+        Combined = rbind(Combined, df)
     }
-    df$Bin = cut(df$MutLoad, breaks=c(0,10,100,1000,50000), labels=c('0-10','10-100','100-1000','1000->10,000'))
-    df = na.omit(df)
-    df$FractionNMD= df$True/(df$False + df$True)
-    booted= BootAS(df)
-    booted_CI = data.frame(booted %>% group_by(Bin, Thresholds) %>% summarise(mean = mean(fraction, na.rm = TRUE), sd = sd(fraction, na.rm = TRUE), n= n()) %>%
+    Combined$Bin = cut(Combined$MutLoad, breaks=c(0,10,100,1000,50000), labels=c('0-10','10-100','100-1000','1000->10,000'))
+    Combined = na.omit(Combined); Combined$AS='RI'
+    Combined$FractionNMD= Combined$True/(Combined$False + Combined$True)
+    booted= BootAS(Combined)
+    booted_CI = data.frame(booted %>% group_by(Bin, Threshold) %>% summarise(mean = mean(fraction, na.rm = TRUE), sd = sd(fraction, na.rm = TRUE), n= n()) %>%
                 mutate(se = sd / sqrt(n), lower.ci = mean - qt(1 - (0.05 / 2), n - 1) * se, upper.ci = mean + qt(1 - (0.05 / 2), n - 1) * se))
-    PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=Thresholds, color=Thresholds)) + 
+    PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=Threshold, color=Threshold)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
         geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2) +
-        labs(y='Under-expressed Transcripts With Intron Retention \nAll Transcripts With Intron Retention',
-         x= 'Number of Protein Coding Mutations')
-    ggsave(paste0(PlotDir, 'AS_RI_AllThresholds_TCGA.pdf' ), width=8, height=5, units='in') 
+        labs(y=expression(atop(underline("Under-expressed Transcripts With Intron Retention"), 
+             paste("All Transcripts With Intron Retention"))), x= 'Number of Protein Coding Mutations')
+    ggsave(paste0(PlotDir, 'AS_RI_AllThresholds_TCGA.pdf' ), width=5, height=5, units='in') 
 }
 
 
@@ -116,59 +114,6 @@ AddPercentileRank = function(df) {
     return(out)
 }
 
-PlotshRNA = function(df) {
-    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
-    df$Sig = ifelse(df$Pr...t.. < 0.05, '*','')
-    df$Sig = ifelse(df$Pr...t.. < 0.005, '**', df$Sig)
-    df$Sig = ifelse(df$Pr...t.. < 0.0005, '***', df$Sig)
-    df$Dummy = '' #'Protein Coding\nMutations'
-    df$Group = gsub('mic Rib', 'mic\nRib', df$Group); df$Group = gsub('ial Rib', 'ial\nRib', df$Group); df$Group = gsub('ial Ch', 'ial\nCh', df$Group)
-    df$Group = gsub('ory Pa', 'ory\nPa', df$Group)
-    ggplot(df, aes(y=Dummy, x = Group ,fill=Estimate)) + geom_tile()+
-        #scale_fill_viridis(discrete=FALSE) +
-        #scale_fill_gradientn(colours=c("blue","black","red")) +
-        scale_fill_gradientn(colors=c("red","grey","blue"), 
-            values=rescale(c(min(df$Estimate),0, max(df$Estimate))),limits=c(min(df$Estimate),max(df$Estimate)))+
-        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8) +
-        theme_minimal() +
-        #coord_flip() +
-        #facet_wrap(~subgroup, scales='free', ncol=5, space='free_x') +
-        #facet_wrap(~Group, scales='free_x', space='free') +
-        facet_grid(cols=vars(subgroup), scales='free_x', space='free_x') +
-        scale_colour_manual(values=c("black","black",'black','black')) +
-        labs(y='',x='', fill='Beta\nCoefficient') + theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ theme(text = element_text(size=18))+
-        ggtitle('Achilles (shRNA Screen)')
-    ggsave(paste0(PlotDir, 'CCLE_shRNA_Regression.pdf' ), width=12, height=3.7, units='in')
-}
-
-
-PlotDrug = function(df) {
-    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
-    df$Sig = ifelse(df$Pr...t.. < 0.05, '*','')
-    df$Sig = ifelse(df$Pr...t.. < 0.005, '**', df$Sig)
-    df$Sig = ifelse(df$Pr...t.. < 0.0005, '***', df$Sig)
-    df$Dummy = '' #'Protein Coding\nMutations'
-    df = subset(df, (df$subgroup != 'Protein Synthesis Inhibitor') & (df$subgroup != 'RNA Synthesis Inhibitor'))
-    df$subgroup2 = gsub(' Inhibitor', '\nInhibitor', df$subgroup)
-    df$subgroup2 = gsub('cific Pro', 'cific\nPro', df$subgroup)
-    ggplot(df, aes(y=Dummy, x = name ,fill=Estimate)) + geom_tile()+
-        #scale_fill_viridis(discrete=FALSE) +
-        #scale_fill_gradientn(colours=c("blue","black","red")) +
-        scale_fill_gradientn(colors=c("red","white","grey"), 
-            values=rescale(c(min(df$Estimate),0, max(df$Estimate))),limits=c(min(df$Estimate),max(df$Estimate)))+
-        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8) +
-        theme_minimal() +
-        #coord_flip() +
-        #facet_wrap(~subgroup, scales='free', ncol=5) +
-        #facet_wrap(~Group, scales='free_x', space='free') +
-        facet_grid(cols=vars(subgroup2), scales='free_x', space='free_x') +
-        scale_colour_manual(values=c("black","black",'black','black')) +
-        labs(y='',x='Drug Name', fill='Beta\nCoefficient') + 
-        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=14)) +
-        theme(plot.title = element_text(hjust = 0.5, face = "bold")) + ggtitle('PRISM (Drug Screen)') 
-    ggsave(paste0(PlotDir, 'CCLE_DrugRegression.pdf' ), width=12, height=2.75, units='in') 
-}
 
 
 PlotCircularCORUMTCGA = function(df) {
@@ -831,77 +776,95 @@ PlotBootstrappedNegativelyAssociatedDrugs = function() {
 }
 
 
-PlotRankingByIndividuals = function(df) {
-    # print(head(df))
-    # #df = df[df$Group %in% c('HSP 60','HSP 100'),]
-    # print(head(df))
- # by type
- library(umap)
+### Heat - map version !
+# PlotModelDiagnosticsCCLEDrug = function(df) {
+#     # Fitted values vs residuals for full model and all explanatory variables
+#     df = subset(df, (df$subgroup != 'RNA Synthesis Inhibitor') &  (df$subgroup != 'Protein Synthesis Inhibitor'))
+#     df$Diagnostic = gsub('MutLoad','Mutational Load',df$Diagnostic);df$Diagnostic = gsub('FullModel','Full Model',df$Diagnostic);
+#     df$subgroup = gsub(' ','\n', df$subgroup)
+#     print(unique(df$subgroup))
+#     df$PearsonsR = as.numeric(as.character(df$PearsonsR))
+#     Plot = ggplot(df, aes(y=name, x = Diagnostic ,fill=PearsonsR)) + geom_tile()+
+#         #scale_fill_gradientn(colors=c("red","grey","blue"), 
+#         #    values=rescale(c(min(df$PearsonsR),0, max(df$PearsonsR))),limits=c(min(df$PearsonsR),max(df$PearsonsR)))+
+#         theme_minimal() +
+#         facet_grid(rows=vars(subgroup), scales='free_y', space='free_y') +
+#         labs(y='',x='', fill="Pearson's R") + theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+#         theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ theme(text = element_text(size=18))+
+#         ggtitle('PRISM (Drug Screen)')
+#     ggsave(paste0(PlotDir, 'ModelDiagnosticCCLEDrug.pdf'), width=8, height=12, units='in')
+# }
+
+
+PlotModelDiagnosticsCCLEDrug = function(df) {
+    # Fitted values vs residuals for full model and all explanatory variables
+    df = subset(df, (df$subgroup != 'RNA Synthesis Inhibitor') &  (df$subgroup != 'Protein Synthesis Inhibitor'))
+    df$Diagnostic = gsub('MutLoad','Mutational Load',df$Diagnostic);df$Diagnostic = gsub('FullModel','Full Model',df$Diagnostic);
+    df$subgroup = gsub(' ','\n', df$subgroup)
+    print(unique(df$subgroup))
+    df$PearsonsR = as.numeric(as.character(df$PearsonsR))
+    Plot = ggplot(df, aes(x=PearsonsR, y = Diagnostic, color=subgroup)) + geom_point(size=4)+
+        #scale_fill_gradientn(colors=c("red","grey","blue"), 
+        #    values=rescale(c(min(df$PearsonsR),0, max(df$PearsonsR))),limits=c(min(df$PearsonsR),max(df$PearsonsR)))+
+        theme_minimal() + guides(color = guide_legend(ncol = 1))  +
+        #facet_grid(rows=vars(subgroup), scales='free_y', space='free_y') +
+        labs(y='Model Diagnostic',x="Pearson's R", color='') + theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ theme(text = element_text(size=13))+
+        ggtitle('PRISM (Drug Screen)') +theme(legend.position='bottom') 
+    ggsave(paste0(PlotDir, 'ModelDiagnosticCCLEDrug.pdf'), width=4, height=7, units='in')
+}
+
+PlotModelDiagnosticsCCLEshRNA = function(df) {
+    df$Diagnostic = gsub('MutLoad','Mutational Load',df$Diagnostic);df$Diagnostic = gsub('FullModel','Full Model',df$Diagnostic);
+    #df$Group= gsub(' ','\n', df$Group)
+    print(unique(df$subgroup))
+    df$PearsonsR = as.numeric(as.character(df$PearsonsR))
+    Plot = ggplot(df, aes(x=PearsonsR, y = Diagnostic, color=Group)) +
+        #scale_fill_gradientn(colors=c("red","grey","blue"), 
+        #    values=rescale(c(min(df$PearsonsR),0, max(df$PearsonsR))),limits=c(min(df$PearsonsR),max(df$PearsonsR)))+
+        theme_minimal() + geom_point(size=4)+  theme(legend.position='bottom') +
+        #facet_grid(rows=vars(subgroup), scales='free_y', space='free_y') +
+        labs(y='Model Diagnostic',x="Pearson's R", color='') + theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ theme(text = element_text(size=13))+
+        ggtitle('Achilles (shRNA Screen)') + guides(color = guide_legend(ncol = 1)) 
+    ggsave(paste0(PlotDir, 'ModelDiagnosticCCLEshRNA.pdf'), width=4, height=7, units='in')
+}
+
+PlotModelDiagnosticsCCLEExpression = function(df) {
+
+    df$Diagnostic = gsub('MutLoad','Mutational Load',df$Diagnostic);df$Diagnostic = gsub('FullModel','Full Model',df$Diagnostic);
+    #df$Group= gsub(' ','\n', df$Group)
+    print(unique(df$subgroup))
+    df$PearsonsR = as.numeric(as.character(df$PearsonsR))
+    Plot = ggplot(df, aes(x=PearsonsR, y = Diagnostic , color=Group)) + geom_boxplot() +
+        #scale_fill_gradientn(colors=c("red","grey","blue"), 
+        #    values=rescale(c(min(df$PearsonsR),0, max(df$PearsonsR))),limits=c(min(df$PearsonsR),max(df$PearsonsR)))+
+        theme_minimal() + theme(legend.position='bottom') +
+        #facet_grid(rows=vars(subgroup), scales='free_y', space='free_y') +
+        labs(x="Pearson's R",y='Model Diagnostic', color="") + theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ theme(text = element_text(size=14))+
+        ggtitle('Gene Expression') + guides(color = guide_legend(ncol = 1)) 
+    ggsave(paste0(PlotDir, 'ModelDiagnosticCCLEExpression.pdf'), width=4, height=7, units='in')
+
+}
+
+
+PlotLinearityOfExpVars = function(df, Dataset) {
+    # Linearity of explanatory variables - purity, exp, load
     print(head(df))
-    pca_in = spread(df[c('Barcode','GeneName','NormVal')], key = Barcode, value = NormVal)
-    row.names(pca_in) = pca_in$GeneName; pca_in$GeneName=NULL
-    print(head(t(pca_in)))
-    #pca_in = as.numeric(as.character(pca_in))
-    df_pca = umap(t(pca_in))
-    print(head(data.frame(df_pca$layout)))
-    df_out = data.frame(df_pca$layout); 
-    print(head(df_out)); df_out$Barcode = row.names(df_out)
-    df_out = merge(df_out, unique(df[c('Barcode','type')]), by='Barcode')
-    write.table(df_out, '/home/tilk/UMAP_CancerType', quote=F, sep='\t')
-    #print(df_out)
-    PCAPlot = ggplot(df_out, aes(x=X1,y=X2,color=type )) + geom_point(size=4) + theme_minimal()
+    df= na.omit(df)
+    library(MASS)
+    Linear = ggplot(df, aes(x = value)) + 
+        geom_histogram(aes(y=..density..),colour = "black", fill = "white", bins=20) +
+        geom_density(aes(color = 'emprical'), size = 1)+
+        stat_function(fun = ~ dnorm(.value,
+                                MASS::fitdistr(.value, 'normal')$estimate[[1]],
+                                MASS::fitdistr(.value, 'normal')$estimate[[2]]),
+                  aes(color = 'Normal'))
+    if (Dataset == 'TCGA') {
+        Linear = Linear + facet_wrap(~variable, scale='free') + ggtitle(Dataset)
+    }
 
-
-
-    print(head(df))
-    pca_in = spread(df[c('Barcode','GeneName','NormVal')], key = Barcode, value = NormVal)
-    row.names(pca_in) = pca_in$GeneName; pca_in$GeneName=NULL
-    print(head(t(pca_in)))
-    #pca_in = as.numeric(as.character(pca_in))
-    df_pca = umap((pca_in))
-    print(head(data.frame(df_pca$layout)))
-    df_out = data.frame(df_pca$layout); 
-    print(head(df_out)); df_out$GeneName = row.names(df_out)
-    df_out = merge(df_out, unique(df[c('GeneName','Group')]), by='GeneName')
-    write.table(df_out, '/home/tilk/UMAP_CancerType')
-    #print(df_out)
-    PCAPlot = ggplot(df_out, aes(x=X1,y=X2,color=Group)) + geom_point(size=4) + theme_minimal()
-
-
-
-
-
-
-# # by categories
-
-#     print(head(df))
-#     pca_in = spread(df[c('Barcode','GeneName','NormVal')], key = Barcode, value = NormVal)
-#     row.names(pca_in) = pca_in$GeneName; pca_in$GeneName=NULL
-#     print(head(t(pca_in)))
-#     #pca_in = as.numeric(as.character(pca_in))
-#     df_pca = prcomp(pca_in)
-#     df_out = as.data.frame(df_pca$x); df_out$GeneName = row.names(df_out)
-#     df_out = merge(df_out, unique(df[c('GeneName','Group')]), by='GeneName')
-#     #print(df_out)
-#     PCAPlot = ggplot(df_out, aes(x=PC1,y=PC2,color=Group )) + geom_point(size=4) + theme_minimal()
-
-
-
-
-    #df = subset(df, df$Group == '19S Regulatory Particle')
-    
-    # RankingDF$ExpRank = rank(RankingDF$GeneExpRank)
-    # RankingDF = RankingDF[order(RankingDF$ExpRank),]
-    # print(head(RankingDF))
-    #df= df[order(df$SingleRank),]
-   # df$BarcodeRanked = factor(df$Barcode, levels=unique(df$Barcode))
-
-
-    # print(head(df_out))
-    # RankPlot = ggplot(df, aes(x = BarcodeRanked, y = (as.numeric(as.character(NormVal))), color=Group, fill = Group)) +
-    #     geom_point() + facet_wrap(~Group,ncol=4) + 
-    #     theme(axis.text.x=element_blank(),axis.ticks.x=element_blank(), legend.position='none')
-    ggsave(paste0(PlotDir, 'RankingExpressionByGroupsUMAP_TCGA.pdf' ))
-
+    ggsave(paste0(PlotDir, 'LinearityOfLoadAndPurity_', Dataset, '.pdf' ), width=6, height=5, units='in')
 }
 
