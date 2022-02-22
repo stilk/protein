@@ -9,6 +9,7 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import pandas2ri
 from rpy2.robjects.conversion import localconverter
 from GetData import * 
+from Splicing import * 
 
 def SetUpRegressionPackages():
     ggplot = importr('ggplot2')
@@ -74,26 +75,32 @@ def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
     return(Stats.merge(Covariates, left_on='Barcode', right_on='Barcode'))
 
 
-def GetRegressionEstimates(Dataset, DataType, MutType='SNV', GeneSet=[], ByGene=True, NormalizeY=True):
-    ''' Regession for gene expression, protein expression, AS (alternative splicing/PSI), and shRNA.'''
+
+def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=False):  
     SetUpRegressionPackages()
-    df = GetRegressionStatsInput(Dataset, DataType, MutType)
-    if len(GeneSet) != 0: # Subset to genes of interest
-        df = df[df['GeneName'].isin(GeneSet)]
+    df = GetRegressionStatsInput(Dataset, DataType, MutType) 
     R = ConvertPandasDFtoR(df)
-    if ByGene: 
-        if DataType == 'Protein' or DataType == 'AS' or DataType == 'RNAi':
-            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', False)))
-        elif Dataset == 'CCLE':
-            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', True)))
-        elif Dataset == 'TCGA':
-            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'MixedEffect', True)))
-        elif Dataset == 'GTEX':
-            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS')))
-    else: # Do regression by gene group
-        if Dataset == 'TCGA':
-            return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGroup(R)))
-        #elif Dataset == 'CCLE':
+    if Dataset == 'CCLE':
+        return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', True, DoModelDiagnostics)))
+    elif Dataset == 'TCGA':
+        return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'MixedEffect', True, DoModelDiagnostics)))
+    
+
+
+def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Diagnostics/'):
+    '''
+    Calculates Pearson's R for fitted values with residuals for the full regression model, 
+    and residuals vs all explanatory variables. Outputs statistics for each gene.
+    '''
+    if DataType == 'Expression':
+        df = GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=True)
+    elif DataType == 'shRNA':
+        df = GetshRNARegression(DoModelDiagnostics=True)
+    elif DataType == 'Drug':
+        df = GetPerDrugRegression(DoModelDiagnostics=True)
+    df.to_csv(OutDir + Dataset + DataType + MutType + 'ModelDiagnosticResidualVsFittedVals')
+ 
+
 
 def JacknifeAcrossCancerTypes(Dataset, DataType, CancerTypeToRemove='', MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Jacknife/'):
     ''' 
@@ -150,7 +157,8 @@ def GetSubsetOfGeneAnnotationsOfInterest():
         pd.DataFrame({'Group': 'HSP 40', 'subgroup' : 'Chaperones','Hugo' : chap[(chap['Level2'] == 'HSP40') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']})])
     return(groups)
 
-def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa')):
+
+def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa'), DoModelDiagnostics=False):
     ''' Grouped regression '''
     SetUpRegressionPackages()
     groups = GetSubsetOfGeneAnnotationsOfInterest()
@@ -159,22 +167,24 @@ def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RN
     for Group in groups['Group'].unique():
         SingleGroup = ConvertPandasDFtoR(df[df['Group'] == Group].dropna()[['LogScore','Value','GeneName']])
         #Reg= ConvertRDataframetoPandas(ro.r.DoLinearRegression(SingleGroup, NormalizeY=True)).reset_index()
-        Reg = ConvertRDataframetoPandas(ro.r.DoOLSRegressionWithGeneName(SingleGroup, False)).reset_index()
+        Reg = ConvertRDataframetoPandas(ro.r.DoOLSRegressionWithGeneName(SingleGroup, False, DoModelDiagnostics)).reset_index()
         Reg = pd.concat([df.query('Group == @Group')[['subgroup','Group']].head(2).reset_index(), 
             Reg.rename(columns={'index':'Coefficient'})], axis=1) 
         Out = Out.append(Reg)
     Out = Out.dropna()
-    Out = Out[Out['Coefficient'] == 'LogScore']
+    if not DoModelDiagnostics:
+        Out = Out[Out['Coefficient'] == 'LogScore']
     return(Out)
 
 
-def GetPerDrugRegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='Drug', MutType='KsKa')):
+
+def GetPerDrugRegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='Drug', MutType='KsKa'), DoModelDiagnostics=False):
     '''Performs linear regression on CCLE lines with load as the predictor and viability at the y.''' 
     SetUpRegressionPackages()
     Out = pd.DataFrame()
     for Drug in df['name'].unique():
         SingleDrug = ConvertPandasDFtoR(df[df['name'] == Drug].dropna())
-        Reg= ConvertRDataframetoPandas(ro.r.DoLinearRegression(SingleDrug, NormalizeY=True)).reset_index()
+        Reg= ConvertRDataframetoPandas(ro.r.DoLinearRegression(SingleDrug, True, DoModelDiagnostics)).reset_index()
         Reg = pd.concat([df.query('name == @Drug')[['name','subgroup','Group','screenType']].head(2).reset_index(), 
             Reg.rename(columns={'index':'Coefficient'})], axis=1) ## Add drug name and group to regression output
         Out = Out.append(Reg)
@@ -208,21 +218,19 @@ def GetDeltaPSIForEachGene():
 
 
 
-
+GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression')
+#GetRegressionModelDiagnostics(Dataset='CCLE', DataType='shRNA')
+#GetRegressionModelDiagnostics(Dataset='CCLE', DataType='Drug')
 
 
 # # GetNumberOfMutsAndCancerType(Dataset='TCGA')
 
-# GetRegressionEstimates(Dataset='TCGA', DataType='AS', MutType='KsKa', GeneSet=[], ByGene=True).to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ASMixedEffectRegressionEstimatesKsKaTCGA')
-
-
 # GetPerDrugRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/DrugOLSRegressionEstimatesKsKaCCLE')
 
-# GetRegressionEstimates(Dataset='TCGA', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True).to_csv(
+# GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True).to_csv(
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityAndAge')
 
-# GetRegressionEstimates(Dataset='CCLE', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True, NormalizeY=True).to_csv(
+# GetExpressionRegression(Dataset='CCLE', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True, NormalizeY=True).to_csv(
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionOLSRegressionEstimatesKsKaCCLE')
 
 # GetRegressionEstimates(Dataset='CCLE', DataType='Protein', MutType='KsKa', GeneSet=[], ByGene=True, NormalizeY=False).to_csv(
