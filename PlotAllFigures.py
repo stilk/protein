@@ -38,6 +38,7 @@ def ConvertRDataframetoPandas(df):
         dfInPd = ro.conversion.rpy2py(df) # Convert R dataframe back to Pandas
     return(dfInPd)
 
+
 def GetGeneAnnotationsOfInterest():
     corum = corum = pd.read_csv('/labs/ccurtis2/tilk/02_DNDS/separateDatabaseFiles/CORUM/coreComplexes.txt.zip', sep='\t')
     chap = pd.read_csv('/labs/ccurtis2/tilk/09_PROTEIN/Human_Chaperome_TableS1A_PMID_29293508', sep='\t')
@@ -61,7 +62,7 @@ def GetFigureInput(FigureNum):
     SetUpPlottingPackages()
     rstats = importr('stats')
     InputDir = '/labs/ccurtis2/tilk/scripts/protein/Data/'
-    if FigureNum == 'GlobalGSE_TCGA_Regression':
+    if FigureNum == 'GlobalGSE_TCGA_Regression': # fig1B and 1C
         df = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
         df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
         df = df[df['Coefficient'] == 'LogScore']
@@ -69,12 +70,7 @@ def GetFigureInput(FigureNum):
         df['Adj.Pval'] = rstats.p_adjust(FloatVector(df['Pr...t..']), method = 'fdr')
         GeneSet = df[(df['Estimate'] > 0) & (df['Adj.Pval'] < 0.05)]['GeneName']
         gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment( ConvertPandasDFtoR(GeneSet)))
-        #gse = gse[gse['source'] == 'CORUM']
         return(ConvertPandasDFtoR(gse[['term_name','source','p_value']]))
-    elif FigureNum == 'DGE_GSE_TCGA':
-        gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment(ro.r.GetGeneSets('PanCancerMatchedDGE')))
-        gse = gse[gse['source'] == 'CORUM']
-        return(ConvertPandasDFtoR(gse[['term_name','p_value']]))
     elif FigureNum == 'GlobalGSE_CCLE_Regression':   
         gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment(ro.r.GetGeneSets('ExpressionCCLE')))
         gse = gse[gse['source'] == 'CORUM']
@@ -180,39 +176,6 @@ def GetFigureInput(FigureNum):
         out = out[out['source'].isin(['CORUM','REAC'])].set_index(['term_name']).groupby(
             ['Group','source'])['p_value'].nsmallest(10).reset_index()
         return(ConvertPandasDFtoR(out))
-    elif FigureNum == 'AllByGene_TCGA':
-        all = pd.read_csv(InputDir + 'Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGA')
-        all['Coefficient'] = all['Unnamed: 0'].str.replace('\d+', '')
-        all = all[all['Coefficient'] == 'LogScore']
-        all = all[(all['adj.pval'] < 0.05) & (all['Estimate'] > 0)]
-        all['pval_rank'] =all['adj.pval'].rank(method='min')
-        corum = pd.read_csv('/labs/ccurtis2/tilk/02_DNDS/separateDatabaseFiles/CORUM/coreComplexes.txt.zip', sep='\t')
-        PosGSE = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment( ConvertPandasDFtoR(all['GeneName'])))
-        GenesInCorumEnrichment = corum[corum['ComplexName'].isin(PosGSE['term_name'])].set_index(['ComplexName'])['subunits(Gene name)'].str.split(
-            ';', expand=True).reset_index().melt(id_vars='ComplexName').rename(columns={'value':"GeneName"})   
-        out = all.merge(GenesInCorumEnrichment, left_on='GeneName', right_on='GeneName', how='left').replace(np.nan,0)
-        out['NegLog10PVal'] = -np.log10(out['adj.pval'])
-        out = out[['Estimate','ComplexName','NegLog10PVal','pval_rank','GeneName']]
-        return(ConvertPandasDFtoR(out.astype(str)))
-    elif FigureNum == 'Drug_CCLE':
-        df = GetPerDrugRegression()
-        df['Coefficient'] = df['Coefficient'].str.replace('\d+', '')
-        df = df[df['Coefficient'] == 'LogScore']
-        return(ConvertPandasDFtoR(df))
-    elif FigureNum == 'Protein_CCLE': 
-        protein = pd.read_csv(InputDir + 'Regression/ProteinOLSRegressionEstimatesKsKaCCLE')
-        protein['Coefficient'] = protein['Unnamed: 0'].str.replace('\d+', '')
-        protein = protein[protein['Coefficient'] == 'LogScore']
-        protein['Adj.Pval'] = rstats.p_adjust(FloatVector(protein['Pr...t..']), method = 'fdr')
-        protein = protein.merge(GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo')
-        return(ConvertPandasDFtoR(protein.astype(str)))
-    elif FigureNum == 'Protein_Exp':
-        protein = GetProteinExpressionData('CCLE')
-        protein = protein.merge(GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo')
-        Muts = AnnotateMutationalLoad(GetMutations('CCLE'), MutType='KsKa')
-        Groups = pd.concat([Muts[Muts['MutLoad'] >= 2000].assign(MutGroup = 'High'), Muts[Muts['MutLoad'] <= 200].assign(MutGroup = 'Low')])
-        out = protein.merge(Groups, left_on = 'Barcode', right_on = 'Barcode')
-        return(ConvertPandasDFtoR(out.astype(str)))
     elif FigureNum == '1B': # TCGA Regression for nonsyn/polyphen/HE
         df = pd.concat([pd.read_csv(InputDir + '/Regression/TCGA_Expression_Chaperome_Nonsynonymous.txt').assign(Type='Nonsynonymous'),
                         pd.read_csv(InputDir + '/Regression/TCGA_Expression_Chaperome_Polyphen.txt').assign(Type='Damaging Nonsynonymous'),
@@ -227,36 +190,6 @@ def GetFigureInput(FigureNum):
         df = df[df['Coefficient'] == 'LogScore']
     elif FigureNum == '1B_QQ':
         df = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesTCGA')
-    elif FigureNum == 'Stability':
-        mut =  AnnotateMutationalLoad(GetMutations(Dataset='TCGA'), MutType='SNV')
-        stability = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/MutFunc/TCGA_ProteinStability_HomologyModel' )
-        drivers = pd.read_csv('/labs/ccurtis2/tilk/scripts/cancer-HRI/Data/GeneSets/drivers_Bailey2018.txt', header=None)[0]
-        stability['Driver'] = stability['Hugo_Symbol'].isin(drivers)
-        stability = stability[['MutID','ENST','Tumor_Sample_Barcode','Hugo_Symbol', 'Gene','Variant_Classification','ddG','Driver']].dropna()
-        stability['Barcode'] = stability['Tumor_Sample_Barcode'].str[0:15]
-        stability = stability.merge(mut, left_on='Barcode', right_on='Barcode', how='left')
-        stability['DestabilizingMut'] = ((stability['ddG'] >= 1) * 1).map({1:'Unstable', 0:'Stable'})
-        stability = stability.groupby(['Tumor_Sample_Barcode','MutLoad','Driver'])['DestabilizingMut'].value_counts().unstack().replace(np.nan,0).reset_index()
-        return(ConvertPandasDFtoR(stability))
-    elif FigureNum == 'Stability_DeltaG':
-        mut =  AnnotateMutationalLoad(GetMutations(Dataset='TCGA'), MutType='SNV')
-        stability = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/MutFunc/TCGA_ProteinStability_HomologyModel' )
-        drivers = pd.read_csv('/labs/ccurtis2/tilk/scripts/cancer-HRI/Data/GeneSets/drivers_Bailey2018.txt', header=None)[0]
-        stability['Driver'] = stability['Hugo_Symbol'].isin(drivers)
-        stability = stability[['MutID','ENST','Tumor_Sample_Barcode','Hugo_Symbol', 'Gene','Variant_Classification','ddG','Driver']].dropna()
-        stability['Barcode'] = stability['Tumor_Sample_Barcode'].str[0:15]
-        stability = stability.merge(mut, left_on='Barcode', right_on='Barcode', how='left')
-        stability = stability.groupby(['Tumor_Sample_Barcode','MutLoad','Driver'])['ddG'].mean().reset_index()
-        return(ConvertPandasDFtoR(stability))
-        #return(stability)
-        #stability['MutBin'] = pd.cut(stability['MutLoad'], bins=[0,10,1000,50000])
-        # foo = stability.groupby(['MutBin'])[['Stable','Unstable']].sum().reset_index()
-        # foo['Unstable']/(foo['Stable'] + foo['Unstable'])
-        # stability['Unstable_Fraction'] = stability['Unstable']/(stability['Unstable'] + stability['Stable'])
-    elif FigureNum == 'Grouped_RNAi':
-        df = GetshRNARegression()
-        df['Adj.Pval'] = rstats.p_adjust(FloatVector(df['Pr...t..']), method = 'fdr')
-        return(ConvertPandasDFtoR(df))
     elif FigureNum == 'All_RNAi':
         df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/RNAiOLSRegressionEstimatesNoNormKsKaCCLE')
         df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
@@ -334,60 +267,51 @@ def GetFigureInput(FigureNum):
         # exp = exp.groupby(['Barcode','Group','subgroup','type','MutLoad'])['NormVal'].mean().reset_index() # avg rank of all genes in group
         # exp['SingleRank'] = exp.groupby(['Group','subgroup'])['GeneExpRank'].rank() # re-rank exp avgs into one score
         return(ConvertPandasDFtoR(exp))
+    elif FigureNum == 'ModelVal_GLMM': # residuals vs fitted vals; residauls vs all explanatory variables
+        SetUpRegressionPackages()
+        exp = GetExpressionData(Dataset='TS')
+        test = ConvertPandasDFtoR(exp)
+        out = ro.r.DoRegressionPerGene(test,'MixedEffect',True,True)
+        ConvertRDataframetoPandas(out)
+    elif FigureNum == 'ModelVal_LinearityOfVars_TCGA':
+        Mut = AnnotateMutationalLoad(GetMutations('TCGA'), 'KsKa')
+        Mut['MutLoad'] = np.log10(Mut['MutLoad'])
+        Out = Mut.merge(Purity, left_on='Barcode', right_on='Barcode')
+        Out = pd.melt(Out, id_vars='Barcode',value_vars=['MutLoad','purity'])
+        return(ConvertPandasDFtoR(Out))
+    elif FigureNum == 'ModelVal_CCLE_Drug':
+        drug = pd.read_csv(InputDir + 'Regression/Diagnostics/CCLEDrugKsKaModelDiagnosticResidualVsFittedVals')
+        return(ConvertPandasDFtoR(drug))
+    elif FigureNum == 'ModelVal_CCLE_shRNA':
+        shrna = pd.read_csv(InputDir + 'Regression/Diagnostics/CCLEshRNAKsKaModelDiagnosticResidualVsFittedVals')
+        return(ConvertPandasDFtoR(shrna))
+    elif FigureNum == 'ModelVal_CCLE_Expression':
+        exp = pd.read_csv(InputDir + 'Regression/Diagnostics/CCLEExpressionKsKaModelDiagnosticResidualVsFittedVals')
+        groups = GetGeneAnnotationsOfInterest()
+        exp = exp.merge(groups, left_on='GeneName', right_on='Hugo')
+        return(ConvertPandasDFtoR(exp))
 
-
+  
 
 def GetFigure(Figure):
-    if Figure == 'Stability':
-        foo=GetFigureInput('Stability')
-        SetUpPlottingPackages()
-        ro.r.PlotStabilityPerTumor(foo)
-    elif Figure == 'Stability_DeltaG':
-        foo=GetFigureInput('Stability_DeltaG')
-        SetUpPlottingPackages()
-        ro.r.PlotDeltaGPerTumor(foo)
-    elif Figure == 'Groups_CCLEAndTCGA': # Fig 2
+    if Figure == 'Groups_CCLEAndTCGA': # Fig 2
         all = GetFigureInput('Groups_CCLEAndTCGA')
         SetUpPlottingPackages(); ro.r.PlotRegCoefPerGroup(all)
-    elif Figure == 'Protein_CCLE':
-        ro.r.PlotRegCoefPerGroup(GetFigureInput('Protein_CCLE'), 'Protein_CCLE')
-    elif Figure == 'Protein_Exp':
-        ro.r.PlotProtein(GetFigureInput('Protein_Exp'))
     elif Figure == 'AS_Delta_PSI': # Fig 2 
         out = GetFigureInput('AS_Delta_PSI')
         SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
     elif Figure == 'AS_PSI': #Fig 2
         SetUpPlottingPackages(); ro.r.VisualizeAS()
-    elif Figure == 'RNAi_CCLE':
-        foo = GetFigureInput('Grouped_RNAi')
-        SetUpPlottingPackages(); ro.r.PlotshRNA(foo)
-    elif Figure  == 'Drug_CCLE':
-        ro.r.PlotDrug(GetFigureInput('Drug_CCLE'))
-    elif Figure == 'AllIndividualGene_TCGA':
-        ro.r.PlotRefCoefAllGenes(GetFigureInput('AllByGene_TCGA'))
-        foo=GetFigureInput('AllByGene_TCGA')
-        SetUpPlottingPackages(); ro.r.PlotRefCoefAllGenes(foo)
-    elif Figure == 'GlobalGSE_TCGA_Regression':
-        ro.r.PlotGlobalGSETCGA(GetFigureInput('GlobalGSE_TCGA_Regression'), 'TCGA_Regression')
+    elif Figure == 'GlobalGSE_TCGA_Regression':  #fig 1B
         foo = GetFigureInput('GlobalGSE_TCGA_Regression')
-        #SetUpPlottingPackages(); ro.r.PlotCircularCORUMTCGA(foo)
-    elif Figure == 'GlobalGSE_TCGA_Regression_KEGG':
+        SetUpPlottingPackages(); ro.r.PlotCircularCORUMTCGA(foo)
+    elif Figure == 'GlobalGSE_TCGA_Regression_KEGG': #fig 1C
         foo = GetFigureInput('GlobalGSE_TCGA_Regression')
-        SetUpPlottingPackages(); ro.r.PlotGlobalKeggTCGA(foo)
-        # ro.r.PlotCircularKeggTCGA(foo)
+        SetUpPlottingPackages(); ro.r.PlotCircularKeggTCGA(foo)
     elif Figure == 'GlobalGSE_CCLE_Regression':
         ro.r.PlotGlobalGSETCGA(GetFigureInput('GlobalGSE_CCLE_Regression'), 'CCLE_Regression')
     elif Figure == 'DGE_GSE_TCGA':
         ro.r.PlotGlobalGSETCGA(GetFigureInput('DGE_GSE_TCGA'), 'TCGA_DGE')
-    elif Figure == 'OverAndUnderGlobal':
-        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_OverAndExpressionCountsFinerBinsAndGeneSets')
-        df['Drivers'] = df['Drivers'].map({False:'Passengers',True:'Drivers'})
-        df['Essential'] = df['Essential'].map({False:'Not Essential',True:'Essential'})
-        df['Housekeeping'] = df['Housekeeping'].map({False:'Not Housekeeping',True:'Housekeeping'})
-        df = pd.melt(df, id_vars=['Bin','UnderExpressed', 'NotUnderExpressed', 'OverExpressed', 'NotOverExpressed'], 
-            value_vars=['Housekeeping','Essential','Drivers'])
-        df = df.groupby(['value','Bin'])[['UnderExpressed', 'NotUnderExpressed', 'OverExpressed','NotOverExpressed']].sum().reset_index()
-        SetUpPlottingPackages(); ro.r.PlotGlobalDownAndUpregulation(ConvertPandasDFtoR(df))
     elif Figure == 'JacknifeExpCCLE':
         df = GetFigureInput('JacknifeExpCCLE')
         SetUpPlottingPackages(); ro.r.PlotJacknifedExpressionAcrossGroups(df, 'CCLE')
@@ -409,8 +333,25 @@ def GetFigure(Figure):
         SetUpPlottingPackages(); ro.r.PlotRankingByIndividuals(df)
     elif Figure == 'BootstrappedDrugs':
         SetUpPlottingPackages(); ro.r.PlotBootstrappedNegativelyAssociatedDrugs()
+    elif Figure == 'ModelVal_LinearityOfVars_TCGA': # cut
+        df = GetFigureInput('ModelVal_LinearityOfVars_TCGA')
+        SetUpPlottingPackages(); ro.r.PlotLinearityOfExpVars(df,'TCGA')
+    elif Figure == 'ModelVal_LinearityOfVars_CCLE':
+        df = GetFigureInput('ModelVal_LinearityOfVars_CCLE')
+        SetUpPlottingPackages(); ro.r.PlotLinearityOfExpVars(df,'CCLE')
+    elif Figure == 'ModelVal_CCLE_Drug':
+        df = GetFigureInput('ModelVal_CCLE_Drug')
+        SetUpPlottingPackages(); ro.r.PlotModelDiagnosticsCCLEDrug(df)
+    elif Figure == 'ModelVal_CCLE_shRNA':
+        df = GetFigureInput('ModelVal_CCLE_shRNA')
+        SetUpPlottingPackages(); ro.r.PlotModelDiagnosticsCCLEshRNA(df)
+    elif Figure == 'ModelVal_CCLE_Expression':
+        df = GetFigureInput('ModelVal_CCLE_Expression')
+        SetUpPlottingPackages(); ro.r.PlotModelDiagnosticsCCLEExpression(df)
+    
 
-        
+
+
     # elif Figure == 'DeltaPSI':     
     #     df['pVal'] < 0.05]
     #     gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment(ro.r.GetGeneSets('ExpressionCCLE')))
@@ -431,4 +372,4 @@ def GetFigure(Figure):
 # SetUpPlottingPackages(); GetFigure(Figure='Protein_Exp')
 
 
-SetUpPlottingPackages(); GetFigure(Figure='RankExpressionByIndividual')
+GetGLMMDiagnostics()
