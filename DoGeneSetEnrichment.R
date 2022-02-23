@@ -25,7 +25,8 @@ AddPercentileRank = function(df) {
 ReadRegressionResults = function(Category) {
     Dir="/labs/ccurtis2/tilk/scripts/protein/Data/Regression/"
     if (Category == 'TCGA') {
-        df = read.table(paste0(Dir, 'ExpressionMixedEffectRegressionEstimatesKsKaTCGA'), sep=',', header=TRUE)
+       # df = read.table(paste0(Dir, 'ExpressionMixedEffectRegressionEstimatesKsKaTCGA'), sep=',', header=TRUE)
+        df = read.table(paste0(Dir, 'ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity'), sep=',', header=TRUE)
     } else if (Category == 'CCLE') {
         #df = read.table(paste0(Dir, 'ExpressionOLSRegressionEstimatesCCLE'), sep=',', header=TRUE)
         df = read.table(paste0(Dir, 'ExpressionOLSRegressionEstimatesKsKaCCLE'), sep=',', header=TRUE)
