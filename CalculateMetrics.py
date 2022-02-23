@@ -56,7 +56,7 @@ def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
         Values = GetProteinExpressionData(Dataset)
     elif DataType == 'AS':
         Values = GetAlternativeSplicingData()
-    Muts = AnnotateMutationalLoad(GetMutations(Dataset), MutType=MutType)
+    Muts = AnnotateMutationalLoad(GetPointMutations(Dataset), MutType=MutType)
     #Muts['NormalizedMutLoad'] = (Muts['MutLoad'] - Muts['MutLoad'].mean()) / Muts['MutLoad'].std()
     Purity = GetTumorPurity()
     Tissue = GetTissueType(Dataset)
@@ -147,6 +147,7 @@ def GetSubsetOfGeneAnnotationsOfInterest():
         pd.DataFrame({'Group': 'Cytoplasmic Ribosomes','subgroup' : 'Translation', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, cytoplasmic')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
         pd.DataFrame({'Group': 'Mitochondrial Ribosomes', 'subgroup' : 'Translation', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, mitochondrial')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
         pd.DataFrame({'Group': 'Mitochondrial Chaperones' , 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'MITO') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
+        pd.DataFrame({'Group': 'ER Chaperones' , 'subgroup' : 'Chaperones','Hugo' : chap[(chap['Level2'] == 'ER') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
         pd.DataFrame({'Group': '20S Core' , 'subgroup' : 'Proteasome', 'Hugo' : corum[corum['ComplexName'] == '20S proteasome']['subunits(Gene name)'].str.split(';', expand=True).melt()['value']  }),
         pd.DataFrame({'Group': '19S Regulatory Particle' , 'subgroup' : 'Proteasome', 'Hugo' : ['PSMC1','PSMC2','PSMC3','PSMC4','PSMC5','PSMC6', 'PSMD1','PSMD2','PSMD3','PSMD4','PSMD6','PSMD7','PSMD8','PSMD11','PSMD12','PSMD13','PSMD14'] }),
         pd.DataFrame({'Group': 'Small HS' , 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'sHSP') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
@@ -195,8 +196,8 @@ def DoTTestForAS(row):
     '''This is a two-sided test for the null hypothesis that 2 independent samples have identical average (expected) values.'''
     Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE')
     Samples['Barcode'] = Samples['Barcode'].str[0:12].str.replace('-','_')
-    Low = row[list(set(row.index) & set(Samples[Samples['MutLoad'] <= 10]['Barcode'].tolist()))].dropna()
-    High = row[list(set(row.index) & set(Samples[Samples['MutLoad'] >= 1000]['Barcode'].tolist()))].dropna()
+    Low = row[list(set(row.index) & set(Samples[Samples['MutLoad'] < 10]['Barcode'].tolist()))].dropna()
+    High = row[list(set(row.index) & set(Samples[Samples['MutLoad'] > 1000]['Barcode'].tolist()))].dropna()
     return( pd.Series({'pVal': stats.ttest_ind(Low, High)[1], 
 						'Low_mean': Low.mean(), 
 						'High_mean': High.mean(), 
@@ -217,63 +218,33 @@ def GetDeltaPSIForEachGene():
     return(df)
 
 
-
-GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression')
-#GetRegressionModelDiagnostics(Dataset='CCLE', DataType='shRNA')
-#GetRegressionModelDiagnostics(Dataset='CCLE', DataType='Drug')
-
+###########################################################
+### Expression regression used for Fig. 2 TCGA and CCLE ###
+###########################################################
 
 # # GetNumberOfMutsAndCancerType(Dataset='TCGA')
 
 # GetPerDrugRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/DrugOLSRegressionEstimatesKsKaCCLE')
 
-# GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True).to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityAndAge')
+# GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa').to_csv(
+#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
 
-# GetExpressionRegression(Dataset='CCLE', DataType='Expression', MutType='KsKa', GeneSet=[], ByGene=True, NormalizeY=True).to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionOLSRegressionEstimatesKsKaCCLE')
-
-# GetRegressionEstimates(Dataset='CCLE', DataType='Protein', MutType='KsKa', GeneSet=[], ByGene=True, NormalizeY=False).to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ProteinOLSRegressionEstimatesKsKaCCLE')
+# GetshRNARegression().to_csv(
+#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/ExpressionOLSRegressionEstimatesKsKaCCLE')
 
 
-# GetRegressionEstimates(Dataset='CCLE', DataType='RNAi', MutType='KsKa', GeneSet=[], ByGene=True, NormalizeY=False).to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/AchillesOnlyRNAiOLSRegressionEstimatesNoNormKsKaCCLE')
-
-
-#RunVEPToGetDeleteriousScores(Dataset='CCLE').to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Raw/Mutations/CCLE/CCLE_Mutations_Polyphen_Annotated', sep='\t')
-
-
-
-#GetHighlyExpressedGenes().to_csv('/labs/ccurtis2/tilk/scripts/protein/GeneSets/HighlyExpressed_GTEX_GreaterThan500TPM.txt')
-
-# GetRegressionToGeneSetsOfInterest(Group='Chaperome', Dataset='TCGA', DataType='Expression', MutType='SNV').to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/GroupedRegression_TCGA_Expression_Chaperome_SNVs.txt')
-
-# GetRegressionToGeneSetsOfInterest(Group='Chaperome', Dataset='TCGA', DataType='Expression', MutType='Nonsynonymous').to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/GroupedRegression_TCGA_Expression_Chaperome_Nonsynonymous.txt')
-
-# GetRegressionToGeneSetsOfInterest(Group='Chaperome', Dataset='TCGA', DataType='Expression', MutType='Polyphen').to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/GroupedRegression_TCGA_Expression_Chaperome_Polyphen.txt')
-
-
-
-
-
-
-# GetPerDrugRegression(GetRegressionStatsInput(Dataset='CCLE', DataType='Drug', MutType='KsKa', AllDrugs=True)).to_csv(
+# GetPerDrugRegression().to_csv(
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE'
 # )
 
 ################
-### JackNife ###
-# ################
+### Jacknife ###
+################
 
 # JacknifeAcrossCancerTypes('CCLE', DataType='RNAi', MutType='KsKa')
 
 # JacknifeAcrossCancerTypes('CCLE', DataType='Drug', MutType='KsKa')
 
 # JacknifeAcrossCancerTypes('TCGA', DataType='Expression', MutType='KsKa')
-
 
 # JacknifeAcrossCancerTypes('TCGA', 'Expression', 'UVM')
