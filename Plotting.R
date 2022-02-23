@@ -102,20 +102,6 @@ VisualizeAS = function() {
 
 
 
-AddPercentileRank = function(df) {
-    df$PvaluePercentileRank = trunc(rank(df$pVal))/length(df$pVal)
-    df$EstimatePercentileRankAll = trunc(rank(df$Estimate))/length(df$Estimate)
-    out = rbind(
-        data.frame(EstimatePercentileRank = trunc(rank(df[df['Estimate'] > 0,]$Estimate))/length(df[df['Estimate'] > 0,]$Estimate), 
-        Sign = 'PositivePercentileRank', df[df['Estimate'] > 0,]), 
-        data.frame(EstimatePercentileRank = trunc(rank(df[df['Estimate'] < 0,]$Estimate))/length(df[df['Estimate'] < 0,]$Estimate), 
-        Sign = 'NegativePercentileRank', df[df['Estimate'] < 0,])
-    )
-    return(out)
-}
-
-
-
 PlotCircularCORUMTCGA = function(df) {
 
     df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
@@ -173,7 +159,6 @@ PlotCircularCORUMTCGA = function(df) {
         geom_text(aes(label = term_name, y = ifelse(negative_log10_of_adjusted_p_value<4,5, negative_log10_of_adjusted_p_value+ GapForLegend), 
             hjust = hjust, angle = angle), size = 5)+
           annotate("text", x = rep(nrow(df),2), y = c(5,10), label = c("5","10") , color="grey", size=5 , alpha=1.4, angle=0, fontface="bold", hjust=0.25, vjust=2) + # Add annotation
- 
         coord_polar() 
         print(head(df))
     ggsave(paste0(PlotDir, 'CircularRegressionGeneSetEnrichmentGlobalCORUMTCGA.pdf' ), width=12, height=12, units='in') 
@@ -868,3 +853,15 @@ PlotLinearityOfExpVars = function(df, Dataset) {
     ggsave(paste0(PlotDir, 'LinearityOfLoadAndPurity_', Dataset, '.pdf' ), width=6, height=5, units='in')
 }
 
+
+PlotMultiCollinearityOfSNVsAndCNVs = function(df) {
+    library('ggcorrplot')
+    print(head(df))
+    ccle = subset(df, df$Dataset == 'CCLE'); row.names(ccle) = ccle$Barcode; ccle$Dataset=NULL; ccle$Barcode=NULL
+    tcga = subset(df, df$Dataset == 'TCGA'); row.names(tcga) = tcga$Barcode; tcga$Dataset=NULL; tcga$Barcode=NULL
+    ccle.cor = cor(ccle, method = c("pearson")); tcga.cor = cor(tcga, method = c("pearson"))
+    ccle_plot = ggcorrplot(ccle.cor, lab = TRUE) + ggtitle('CCLE') + theme(plot.title = element_text(hjust = 0.5,face="bold", size=12))
+    tcga_plot = ggcorrplot(tcga.cor, lab = TRUE) + ggtitle('TCGA') + theme(plot.title = element_text(hjust = 0.5,face="bold", size=12))
+    plot_grid(tcga_plot, ccle_plot, labels = c("A", "B"), ncol=1)
+    ggsave(paste0(PlotDir, 'CCLE_TCGA_Multicollinearity.pdf' ), width=5, height=7, units='in')
+}
