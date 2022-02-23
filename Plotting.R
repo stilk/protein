@@ -137,8 +137,8 @@ PlotCircularCORUMTCGA = function(df) {
         mutate(ID = factor(ID, levels = unique(ID)))
 
     PlotOut = ggplot(df, aes(x=ID, y=negative_log10_of_adjusted_p_value, fill=colors)) +
-        geom_segment(x = 70, y = 10, xend = 1, yend = 10, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 10
-        geom_segment(x = 70, y = 5, xend = 1, yend = 5, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 5
+        geom_segment(x = 70, y = 10, xend = 1, yend = 10, colour = "grey", alpha=0.05, size=0.3 ) + # this set the scale line for y = 10
+        geom_segment(x = 70, y = 5, xend = 1, yend = 5, colour = "grey", alpha=0.05, size=0.3 ) + # this set the scale line for y = 5
         geom_bar(stat='identity') +
         ylim(0,20)+
         labs(x='', y='Negative Log10 of Adjusted P-Value') + 
@@ -185,7 +185,8 @@ PlotCircularKeggTCGA = function(df) {
         colors = as.character(c('#F7B530','#3EA612','#A3E189','#F73036','#82CEF5','#3366C7','#F97FA2'))
     )
     ColorsForGrouping=colors$grouping
-    df = merge(df, colors, by='grouping')
+    df = merge(df, colors, by='grouping', all.y=TRUE)
+    print(df)
     df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
     rankingDF = df %>% group_by(grouping) %>% summarise(max = max(negative_log10_of_adjusted_p_value))
     rankingDF = rankingDF[order(rankingDF$max),]
@@ -213,10 +214,10 @@ PlotCircularKeggTCGA = function(df) {
   
     
     PlotOut = ggplot(df, aes(x=ID, y=negative_log10_of_adjusted_p_value, fill=colors)) +
-        geom_segment(x = 70, y = 20, xend = 1, yend = 20, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 20
-        geom_segment(x = 70, y = 15, xend = 1, yend = 15, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 15
-        geom_segment(x = 70, y = 10, xend = 1, yend = 10, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 10
-        geom_segment(x = 70, y = 5, xend = 1, yend = 5, colour = "grey", alpha=0.03, size=0.3 ) + # this set the scale line for y = 5
+        geom_segment(x = 70, y = 20, xend = 1, yend = 20, colour = "grey", alpha=0.05, size=0.3 ) + # this set the scale line for y = 20
+        geom_segment(x = 70, y = 15, xend = 1, yend = 15, colour = "grey", alpha=0.05, size=0.3 ) + # this set the scale line for y = 15
+        geom_segment(x = 70, y = 10, xend = 1, yend = 10, colour = "grey", alpha=0.05, size=0.3 ) + # this set the scale line for y = 10
+        geom_segment(x = 70, y = 5, xend = 1, yend = 5, colour = "grey", alpha=0.05, size=0.3 ) + # this set the scale line for y = 5
         geom_bar(stat='identity') +
         labs(x='', y='Negative Log10 of Adjusted P-Value') + 
         #scale_fill_brewer(palette="Paired") +
@@ -340,14 +341,13 @@ PlotDeltaPSICircular = function(df) {
             size=0.6 , inherit.aes = FALSE )  + 
         geom_text(data=base_data, aes(x = title, y = -2, label=Group), hjust=c(0.6,0.5), vjust=c(0.3,0.5), colour = "black", 
             alpha=0.8, angle=60,size=5, inherit.aes = FALSE)
- 
-    
+
     ggsave(paste0(PlotDir, 'Circular_AS_Delta_PSI_IntonRetention_TCGA.pdf' ), width=12, height=20, units='in')
 }
 
 
 PlotDeltaPSI = function(df) {
-    print(df)
+    df$term_name  = gsub(', ATP synthesis by chemiosmotic coupling, and heat production by uncoupling proteins.', "", df$term_name)  
     df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
     df$Group = gsub('PosPSI','More Intron Retention\n(In High vs. Low)', df$Group)
     df$Group = gsub('NegPSI','Less Intron Retention\n(In High vs. Low)', df$Group)
@@ -368,7 +368,7 @@ PlotDeltaPSI = function(df) {
         labs(x='', y='Negative Log10 of Adjusted P-Value') + 
         scale_fill_manual(values = c('red','#3279D8')) +
         theme_minimal() + theme(legend.position='bottom', legend.title = element_blank(), legend.title.align=0.5) 
-    ggsave(paste0(PlotDir, 'AS_Delta_PSI_IntonRetention_TCGA.pdf' ), width=6, height=4.5, units='in')
+    ggsave(paste0(PlotDir, 'AS_Delta_PSI_IntonRetention_TCGA.pdf' ), width=6.5, height=4.5, units='in')
 }
 
 PlotProtein = function(df) {
