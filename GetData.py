@@ -151,6 +151,8 @@ def AnnotateMutationalLoad(muts, MutType):
 		muts = pd.concat([muts, pd.DataFrame(KaOrKs) * 1], axis=1)
 		muts['TotalKaKs'] = muts['Ka'] + muts['Ks']
 		MutationRate = muts.groupby('Barcode')['TotalKaKs'].sum().reset_index().rename(columns={'TotalKaKs':'MutLoad'})
+	elif MutType == 'CNV':
+		MutationRate = muts.set_index(['SAMPLE_NAME']).sum(axis=1).reset_index().rename(columns={0:'MutLoad', 'SAMPLE_NAME':'Barcode'})
 	elif MutType == 'CN_Deletions':
 		MutationRate = muts[['SAMPLE_NAME','gain']].rename(columns={'SAMPLE_NAME':'Barcode','gain':'MutLoad'})
 	elif MutType == 'CN_Amplifications':
@@ -161,6 +163,12 @@ def AnnotateMutationalLoad(muts, MutType):
 		MutationRate = muts.groupby('Barcode').size().reset_index().rename(columns={0:'MutLoad'})
 	elif MutType == 'Nonsynonymous':
 		muts = muts[muts['Variant_Classification'] == 'Missense_Mutation']
+		MutationRate = muts.groupby('Barcode').size().reset_index().rename(columns={0:'MutLoad'})
+	elif MutType == 'Synonymous':
+		muts = muts[muts['Variant_Classification'] == 'Silent']
+		MutationRate = muts.groupby('Barcode').size().reset_index().rename(columns={0:'MutLoad'})
+	elif MutType == 'Nonsense':
+		muts = muts[muts['Variant_Classification'] == 'Nonsense_Mutation']
 		MutationRate = muts.groupby('Barcode').size().reset_index().rename(columns={0:'MutLoad'})
 	elif MutType == 'Polyphen':
 		muts['PolyPhen'] = muts['PolyPhen'].str.split("(", expand=True)[0]
