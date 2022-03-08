@@ -30,18 +30,20 @@ VisualizeAllAS = function(Threshold='0.8') {
         tmp$AS = AS
         df = rbind(tmp, df)
     }
-    df$Bin = cut(df$MutLoad, breaks=c(0,10,100,1000,50000), labels=c('0-10','10-100','100-1000','1000->10,000'))
+    df$Bin = cut(df$MutLoad,  breaks=c(0,50,100,500,1000,50000), 
+                        labels=c('0-50','50-100','100-500','500-1000','1000->10,000'))
     df = na.omit(df); df$Threshold=Threshold
     df$FractionNMD= df$True/(df$False + df$True)
     booted= BootAS(df)
     booted_CI = data.frame(booted %>% group_by(Bin, AS) %>% summarise(mean = mean(fraction, na.rm = TRUE), sd = sd(fraction, na.rm = TRUE), n= n()) %>%
                 mutate(se = sd / sqrt(n), lower.ci = mean - qt(1 - (0.05 / 2), n - 1) * se, upper.ci = mean + qt(1 - (0.05 / 2), n - 1) * se))
-    PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=AS, color=AS)) + 
+    booted_CI$Bin2 = factor(booted_CI$Bin, levels=unique(booted_CI$Bin))
+    PlotOut = ggplot(booted_CI, aes(x=Bin2, y=mean, group=AS, color=AS)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
         geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2) +
         labs(y=expression(atop(underline("Under-expressed Transcripts With AS Event"), 
              paste("All Transcripts With AS Event"))), x= 'Number of Protein Coding Mutations', color='')
-    ggsave(paste0(PlotDir, 'AS_RI_AllASType_TCGA.pdf' ), width=5, height=5, units='in') 
+    ggsave(paste0(PlotDir, 'AS_RI_AllASType_TCGA.pdf' ), width=6, height=5, units='in') 
 
 }
 
@@ -59,18 +61,20 @@ VisualizeAllASThresholds = function(AS_Type='RI') {
         df$Threshold = T
         Combined = rbind(Combined, df)
     }
-    Combined$Bin = cut(Combined$MutLoad, breaks=c(0,10,100,1000,50000), labels=c('0-10','10-100','100-1000','1000->10,000'))
+    Combined$Bin = cut(Combined$MutLoad,  breaks=c(0,50,100,500,1000,50000), 
+                        labels=c('0-50','50-100','100-500','500-1000','1000->10,000'))
     Combined = na.omit(Combined); Combined$AS='RI'
     Combined$FractionNMD= Combined$True/(Combined$False + Combined$True)
     booted= BootAS(Combined)
     booted_CI = data.frame(booted %>% group_by(Bin, Threshold) %>% summarise(mean = mean(fraction, na.rm = TRUE), sd = sd(fraction, na.rm = TRUE), n= n()) %>%
                 mutate(se = sd / sqrt(n), lower.ci = mean - qt(1 - (0.05 / 2), n - 1) * se, upper.ci = mean + qt(1 - (0.05 / 2), n - 1) * se))
-    PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=Threshold, color=Threshold)) + 
+    booted_CI$Bin2 = factor(booted_CI$Bin, levels=unique(booted_CI$Bin))
+    PlotOut = ggplot(booted_CI, aes(x=Bin2, y=mean, group=Threshold, color=Threshold)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
         geom_errorbar(aes(ymin=upper.ci, ymax=lower.ci), width=.2) +
         labs(y=expression(atop(underline("Under-expressed Transcripts With Intron Retention"), 
              paste("All Transcripts With Intron Retention"))), x= 'Number of Protein Coding Mutations')
-    ggsave(paste0(PlotDir, 'AS_RI_AllThresholds_TCGA.pdf' ), width=5, height=5, units='in') 
+    ggsave(paste0(PlotDir, 'AS_RI_AllThresholds_TCGA.pdf' ), width=6, height=5, units='in') 
 }
 
 
@@ -78,8 +82,9 @@ VisualizeAllASThresholds = function(AS_Type='RI') {
 VisualizeAS = function() {
     Dir = '/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
     df = read.table('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8' ,sep=',', header=T)
-    df$Bin = cut(df$MutLoad, breaks=c(0,10,100,1000,50000), labels=c('0 - 10','10 - 100','100 - 1000','1000 - >10,000'))
-    df = na.omit(df)
+    df$Bin = cut(df$MutLoad, breaks=c(0,50,100,500,1000,50000), 
+                    labels=c('0-50','50-100','100-500','500-1000','1000->10,000'))
+    df = na.omit(df); df$AS = 'RI'; df$Threshold = 0.8
     df$FractionNMD= df$True/(df$False + df$True)
     foo = df %>%  group_by(Bin) %>% sample_frac(1, replace=TRUE) %>% 
                     summarize(retained = sum(True), not_retained = sum(False)) %>% 
@@ -89,7 +94,8 @@ VisualizeAS = function() {
 
     booted_CI = data.frame(booted %>% group_by(Bin) %>% summarise(mean = mean(fraction, na.rm = TRUE), sd = sd(fraction, na.rm = TRUE), n= n()) %>%
                 mutate(se = sd / sqrt(n), lower.ci = mean - qt(1 - (0.05 / 2), n - 1) * se, upper.ci = mean + qt(1 - (0.05 / 2), n - 1) * se))
-    PlotOut = ggplot(booted_CI, aes(x=as.character(Bin), y=mean, group=1)) + 
+    booted_CI$Bin2 = factor(booted_CI$Bin, levels=booted_CI$Bin )
+    PlotOut = ggplot(booted_CI, aes(x=Bin2, y=mean, group=1)) + 
         geom_point() + theme_minimal() + geom_line() + #ylim(0.08,0.1) +
         geom_ribbon(aes(ymin=upper.ci, ymax=lower.ci), alpha=.7, position=position_dodge(.9)) +
         labs(y=expression(atop(underline("Under-expressed Transcripts With Intron Retention"), paste("All Transcripts With Intron Retention"))),
