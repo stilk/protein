@@ -148,33 +148,42 @@ def GetFigureInput(FigureNum):
         df = df[df['Coefficient'] == 'LogScore'] 
         return(ConvertPandasDFtoR(df))
     elif FigureNum == 'Multicollinearity':
-        from functools import reduce
         ccle_muts = AnnotateMutationalLoad(GetPointMutations('CCLE'), 'SNV').rename(columns={'MutLoad':'SNV'}).merge(
-                AnnotateMutationalLoad(GetPointMutations('CCLE'), 'KsKa').rename(columns={'MutLoad':'Protein-Coding'}),
-                left_on='Barcode',right_on='Barcode',how='outer')
+                    AnnotateMutationalLoad(GetPointMutations('CCLE'), 'KsKa').rename(columns={'MutLoad':'Protein-Coding'}),
+                    left_on='Barcode',right_on='Barcode',how='outer').merge(AnnotateMutationalLoad(GetPointMutations('CCLE'), 'Synonymous'),
+                    left_on='Barcode',right_on='Barcode',how='outer').rename(columns={'MutLoad':'Synonymous'}).merge(
+                    AnnotateMutationalLoad(GetPointMutations('CCLE'), 'Nonsynonymous'),left_on='Barcode',right_on='Barcode' ,how='outer').rename(
+                    columns={'MutLoad':'Nonsynonymous'}).merge( AnnotateMutationalLoad(GetPointMutations('CCLE'), 'Nonsense'),
+                    left_on='Barcode',right_on='Barcode',how='outer').rename(columns={'MutLoad':'Nonsense'})
         ccle_cnvs = AnnotateMutationalLoad(GetCopyNumberMutations('CCLE'), 'CN_Deletions').rename(columns={'MutLoad':'Deletions'}).merge(
-                AnnotateMutationalLoad(GetCopyNumberMutations('CCLE'), 'CN_Amplifications').rename(columns={'MutLoad':'Amplifications'}), 
-                left_on='Barcode',right_on='Barcode',how='outer')
+                    AnnotateMutationalLoad(GetCopyNumberMutations('CCLE'), 'CN_Amplifications').rename(columns={'MutLoad':'Amplifications'}), 
+                    left_on='Barcode',right_on='Barcode',how='outer').merge(AnnotateMutationalLoad(GetCopyNumberMutations('CCLE'), 'CNV'),
+                    left_on='Barcode',right_on='Barcode',how='outer').rename(columns={'MutLoad':'CNV'})
         ccle_merged = ccle_muts.merge(ccle_cnvs, left_on='Barcode',right_on='Barcode',how='outer').dropna()
         tcga_muts = AnnotateMutationalLoad(GetPointMutations('TCGA'), 'SNV').rename(columns={'MutLoad':'SNV'}).merge(
-                AnnotateMutationalLoad(GetPointMutations('TCGA'), 'KsKa').rename(columns={'MutLoad':'Protein-Coding'}), 
-                left_on='Barcode',right_on='Barcode',how='outer')
+                    AnnotateMutationalLoad(GetPointMutations('TCGA'), 'KsKa').rename(columns={'MutLoad':'Protein-Coding'}),
+                    left_on='Barcode',right_on='Barcode',how='outer').merge(AnnotateMutationalLoad(GetPointMutations('TCGA'), 'Synonymous'),
+                    left_on='Barcode',right_on='Barcode',how='outer').rename(columns={'MutLoad':'Synonymous'}).merge(
+                    AnnotateMutationalLoad(GetPointMutations('TCGA'), 'Nonsynonymous'),left_on='Barcode',right_on='Barcode' ,how='outer').rename(
+                    columns={'MutLoad':'Nonsynonymous'}).merge( AnnotateMutationalLoad(GetPointMutations('TCGA'), 'Nonsense'),
+                    left_on='Barcode',right_on='Barcode',how='outer').rename(columns={'MutLoad':'Nonsense'})
         tcga_cnvs = AnnotateMutationalLoad(GetCopyNumberMutations('TCGA'), 'CN_Deletions').rename(columns={'MutLoad':'Deletions'}).merge(
-                AnnotateMutationalLoad(GetCopyNumberMutations('TCGA'), 'CN_Amplifications').rename(columns={'MutLoad':'Amplifications'}),
-                left_on='Barcode',right_on='Barcode',how='outer')
+                    AnnotateMutationalLoad(GetCopyNumberMutations('TCGA'), 'CN_Amplifications').rename(columns={'MutLoad':'Amplifications'}), 
+                    left_on='Barcode',right_on='Barcode',how='outer').merge(AnnotateMutationalLoad(GetCopyNumberMutations('TCGA'), 'CNV'),
+                    left_on='Barcode',right_on='Barcode',how='outer').rename(columns={'MutLoad':'CNV'})
         tcga_merged = tcga_muts.merge(tcga_cnvs, left_on='Barcode',right_on='Barcode',how='outer').dropna()  
         return(ConvertPandasDFtoR(pd.concat([tcga_merged.assign(Dataset='TCGA'), ccle_merged.assign(Dataset='CCLE')])))
 
 
 
 def GetFigure(Figure):
-    if Figure == 'Groups_CCLEAndTCGA': # Fig 2A
+    if Figure == 'Groups_CCLEAndTCGA': # Fig 3A
         all = GetFigureInput('Groups_CCLEAndTCGA')
         SetUpPlottingPackages(); ro.r.PlotRegCoefPerGroup(all)
-    elif Figure == 'AS_Delta_PSI': # Fig 2B
+    elif Figure == 'AS_Delta_PSI': # Fig 2A
         out = GetFigureInput('AS_Delta_PSI')
         SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
-    elif Figure == 'AS_PSI': #Fig 2C
+    elif Figure == 'AS_PSI': #Fig 2B
         SetUpPlottingPackages(); ro.r.VisualizeAS()
     elif Figure == 'GlobalGSE_TCGA_Regression':  #fig 1B
         foo = GetFigureInput('GlobalGSE_TCGA_Regression')
@@ -188,17 +197,17 @@ def GetFigure(Figure):
     elif Figure == 'JacknifeExpTCGA':  # supplemental figure x
         df = GetFigureInput('JacknifeExpTCGA')
         SetUpPlottingPackages(); ro.r.PlotJacknifedExpressionAcrossGroups(df,'TCGA')
-    elif Figure == 'JacknifeDrugsCCLE': # fig 3b
+    elif Figure == 'JacknifeDrugsCCLE': # fig 4b
         df = GetFigureInput('JacknifeDrugsCCLE')
         SetUpPlottingPackages(); ro.r.PlotJacknifedDrugsAcrossGroups(df)
-    elif Figure == 'JacknifeshRNACCLE': # fig 3a
+    elif Figure == 'JacknifeshRNACCLE': # fig 4a
         df = GetFigureInput('JacknifeshRNACCLE')
         SetUpPlottingPackages(); ro.r.PlotJacknifedshRNAAcrossGroups(df)
-    elif Figure == 'AllDrugsByLoad': # fig4a
+    elif Figure == 'AllDrugsByLoad': # fig5a
         df = GetFigureInput('AllDrugsByLoad')
         SetUpPlottingPackages(); ro.r.PlotFractionOfSigDrugsForAll(df)
         #SetUpPlottingPackages(); ro.r.PlotRegressionForAllDrugs(df)
-    elif Figure == 'BootstrappedDrugs': # fig4b
+    elif Figure == 'BootstrappedDrugs': # fig5b
         SetUpPlottingPackages(); ro.r.PlotBootstrappedNegativelyAssociatedDrugs()
     elif Figure == 'Multicollinearity': # supplemental figure x
         df = GetFigureInput('Multicollinearity')
@@ -209,27 +218,3 @@ def GetFigure(Figure):
         
 
     
-
-
-
-    # elif Figure == 'DeltaPSI':     
-    #     df['pVal'] < 0.05]
-    #     gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment(ro.r.GetGeneSets('ExpressionCCLE')))
-    #     gse = gse[gse['source'] == 'CORUM']
-    #     return(ConvertPandasDFtoR(gse[['term_name','p_value']]))
-
-
-
-
-### GENE SET ENRICHMENT PLOTS -- FIG 1
-# SetUpPlottingPackages(); ro.r.PlotGlobalGSETCGA(GetFigureInput('GlobalGSE_TCGA_Regression'))
-# SetUpPlottingPackages(); ro.r.PlotGlobalGSETCGA(GetFigureInput('GlobalGSE_CCLE_Regression'))
-# SetUpPlottingPackages(); ro.r.PlotGlobalGSETCGA(GetFigureInput('DGE_GSE_TCGA'))
-
-### EXPLORING BY CATEGORY -- FIG 2
-# SetUpPlottingPackages(); GetFigure(Figure='Groups_TCGA')
-# SetUpPlottingPackages(); GetFigure(Figure='Groups_CCLE')
-# SetUpPlottingPackages(); GetFigure(Figure='Protein_Exp')
-
-
-GetGLMMDiagnostics()
