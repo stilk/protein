@@ -253,7 +253,7 @@ PlotRegCoefPerGroup = function(df) {
         
     print(head(quantile))
     Estimate = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(Estimate)), color=subgroup)) +  geom_boxplot() +
-                theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='bottom') +
+                theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='none') +
                 facet_wrap(~Dataset2, scales='free_x') +
                 scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
                 #geom_vline(data=filter(quantile, Group == '0.05'), aes(xintercept=Estimate))+
@@ -264,16 +264,16 @@ PlotRegCoefPerGroup = function(df) {
                 theme(strip.text = element_text(face="bold", size=12),  panel.grid.minor = element_blank(), panel.grid.major = element_blank())+
                 theme(panel.spacing = unit(2, "lines"), legend.title=element_blank())
                 
-                #theme(strip.text = element_blank())
-    # Rank = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) +  geom_boxplot() +
-    #             theme_minimal() + labs(x='Negative Log10 of Adjusted P-Value', y='') + 
-    #             theme(legend.position='bottom', legend.title=element_blank()) +
-    #             #theme(axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank())+
-    #             geom_vline(xintercept= -log10(0.05), alpha=0.5, size=1, col = 'grey') + facet_wrap(~Dataset2, scales='free_x') +
-    #             theme(strip.text = element_text(face="bold", size=12))
-    # Combined = plot_grid(Estimate, Rank, rel_heights=c(0.85, 1), ncol = 1) 
-    #plot_grid(Title, Combined, ncol=1, rel_heights=c(0.1, 1)) 
-    ggsave(paste0(PlotDir, 'RegCoefPerGroups_TCGAandCCCLE.pdf' ), width=8, height=4, units='in')
+    Rank = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) +  geom_boxplot() +
+                theme_minimal() + labs(x='Negative Log10 of Adjusted P-Value', y='')  + theme(legend.position='bottom') +
+                facet_wrap(~Dataset2, scales='free_x') +
+                theme(legend.position='bottom', legend.title=element_blank()) +
+                scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
+                geom_vline(xintercept= -log10(0.05), alpha=0.5, size=1, col = 'grey') + facet_wrap(~Dataset2, scales='free_x') +
+                theme(strip.text = element_text(face="bold", size=12))
+
+    Combined = plot_grid(Estimate, Rank, rel_heights=c(0.85, 1), ncol = 1) 
+    ggsave(paste0(PlotDir, 'RegCoefPerGroups_TCGAandCCCLE.pdf' ), width=8, height=8, units='in')
 
 
 }
@@ -863,5 +863,5 @@ PlotMultiCollinearityOfSNVsAndCNVs = function(df) {
     ccle_plot = ggcorrplot(ccle.cor, lab = TRUE) + ggtitle('CCLE') + theme(plot.title = element_text(hjust = 0.5,face="bold", size=12))
     tcga_plot = ggcorrplot(tcga.cor, lab = TRUE) + ggtitle('TCGA') + theme(plot.title = element_text(hjust = 0.5,face="bold", size=12))
     plot_grid(tcga_plot, ccle_plot, labels = c("A", "B"), ncol=1)
-    ggsave(paste0(PlotDir, 'CCLE_TCGA_Multicollinearity.pdf' ), width=5, height=7, units='in')
+    ggsave(paste0(PlotDir, 'CCLE_TCGA_Multicollinearity.pdf' ), width=7, height=11, units='in')
 }
