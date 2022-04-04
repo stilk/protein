@@ -418,11 +418,12 @@ PlotJacknifedDrugsAcrossGroups = function(df) {
     df = subset(df, (df$subgroup != 'Protein Synthesis Inhibitor') & (df$subgroup != 'RNA Synthesis Inhibitor'))
     df$subgroup2 = gsub(' Inhibitor', '\nInhibitor', df$subgroup)
     df$subgroup2 = gsub('cific Pro', 'cific\nPro', df$subgroup)
-    ggplot(df, aes(y=CancerTypeRemoved, x = name ,fill=Estimate)) + geom_tile()+
+    print(head(df))
+    ggplot(df, aes(y=CancerTypeRemoved, x = name ,fill=as.numeric(as.character(Estimate)))) + geom_tile()+
         #scale_fill_viridis(discrete=FALSE) +
-        #scale_fill_gradientn(colours=c("blue","black","red")) +
-        scale_fill_gradientn(colors=c("red","white","grey"), 
-            values=rescale(c(min(df$Estimate),0, max(df$Estimate))),limits=c(min(df$Estimate),max(df$Estimate)))+
+       # scale_fill_gradientn(colours=c("red","white","grey"), limits=c(1,-1)) +
+        scale_fill_gradientn(colors=c("red","white","blue"), 
+           values=rescale(c(low=-0.5, mid=0, high=0.1)), breaks=c(-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1),limits=c(-0.5,0.1))+
         geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8) +
         theme_minimal() +
         #coord_flip() +
@@ -445,7 +446,10 @@ PlotJacknifedshRNAAcrossGroups = function(df) {
     df$Dummy = '' #'Protein Coding\nMutations'
     df$Group = gsub('mic Rib', 'mic\nRib', df$Group); df$Group = gsub('ial Rib', 'ial\nRib', df$Group); df$Group = gsub('ial Ch', 'ial\nCh', df$Group)
     df$Group = gsub('ory Pa', 'ory\nPa', df$Group)
-    ggplot(df, aes(y=CancerTypeRemoved, x = Group ,fill=Estimate)) + geom_tile()+
+    print(unique(df$Group))
+    df$Group2 = factor(df$Group, levels= c('HSP 100','HSP 90','HSP 70','HSP 60','Mitochondrial\nChaperones','ER Chaperones','Small HS',
+                '19S Regulatory\nParticle','20S Core','Mitochondrial\nRibosomes','Cytoplasmic\nRibosomes'))
+    ggplot(df, aes(y=CancerTypeRemoved, x = Group2 ,fill=Estimate)) + geom_tile()+
         #scale_fill_viridis(discrete=FALSE) +
         #scale_fill_gradientn(colours=c("blue","black","red")) +
         scale_fill_gradientn(colors=c("red","grey","blue"), 
@@ -870,4 +874,16 @@ PlotMultiCollinearityOfSNVsAndCNVs = function(df) {
     tcga_plot = ggcorrplot(tcga.cor, lab = TRUE) + ggtitle('TCGA') + theme(plot.title = element_text(hjust = 0.5,face="bold", size=12))
     plot_grid(tcga_plot, ccle_plot, labels = c("A", "B"), ncol=1)
     ggsave(paste0(PlotDir, 'CCLE_TCGA_Multicollinearity.pdf' ), width=7, height=11, units='in')
+}
+
+PlotShuffledAndEmpiricalTMB = function(df) {
+    print(unique(df$Group))
+
+    df = df[df$Group == 'Shuffled',]
+    #df = subset(df, df$Group == 'Shuffled')
+
+    Hist = ggplot(df, aes(x=Pr...t.., fill=Group)) + 
+    geom_histogram(alpha=0.7, position="identity") 
+           # facet_wrap(~Group) + geom_vline(0.05)
+    ggsave(paste0(PlotDir, 'TCGA_ShuffledTMB_GLMM.pdf' ), width=7, height=11, units='in')
 }
