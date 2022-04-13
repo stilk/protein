@@ -76,9 +76,11 @@ def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
 
 
 
-def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=False):  
+def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=False, ShuffleTMB=False):  
     SetUpRegressionPackages()
-    df = GetRegressionStatsInput(Dataset, DataType, MutType) 
+    df = GetRegressionStatsInput(Dataset, DataType, MutType)
+    if ShuffleTMB: # Used to compare distribution of null vs empirical p-values for empirical FDR in Fig.1?
+        df['LogScore'] = df.groupby(['type'])['LogScore'].transform(np.random.permutation) # shuffle mut load within cancer types 
     R = ConvertPandasDFtoR(df)
     if Dataset == 'CCLE':
         return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', True, DoModelDiagnostics)))
@@ -86,6 +88,20 @@ def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoMo
         return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'MixedEffect', True, DoModelDiagnostics)))
     
 
+def DoRegressionByAge(DataType='Expression', MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/'):
+    Output = pd.DataFrame() # Where results are appended to
+    SetUpRegressionPackages()
+    df = GetRegressionStatsInput('TCGA', DataType, MutType)
+    df = df.merge( GetSubsetOfGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo')
+    df['AgeBin'] = pd.cut(df['age'], [9,30,40,50,60,70,80,90], labels=['10-30','30-40','40-50','50-60','60-70','70-80','80-90'])
+    #df['AgeBin'] = pd.cut(df['age'], 5, precision=0) # cut by equally sized bins and don't cut by decimals, round to nearest digit
+    #df['AgeBin'] = df['AgeBin'].astype(str).str.replace(', ', '-').str.replace('(','').str.replace(']','') # clean up label names
+    for AgeGroup in df['AgeBin'].unique():
+        AgeSubset = df[df['AgeBin'] == AgeGroup]
+        RegResult = ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(ConvertPandasDFtoR(AgeSubset), 'MixedEffect', True, False))
+        RegResult['AgeBin'] = AgeGroup
+        Output = Output.append(RegResult)
+    Output.to_csv(OutDir + 'TCGA_GLMM_ByAgeGroups')
 
 def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Diagnostics/'):
     '''
@@ -159,6 +175,7 @@ def GetSubsetOfGeneAnnotationsOfInterest():
     return(groups)
 
 
+
 def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa'), DoModelDiagnostics=False):
     ''' Grouped regression '''
     SetUpRegressionPackages()
@@ -169,10 +186,9 @@ def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RN
         SingleGroup = ConvertPandasDFtoR(df[df['Group'] == Group].dropna()[['LogScore','Value','GeneName']])
         #Reg= ConvertRDataframetoPandas(ro.r.DoLinearRegression(SingleGroup, NormalizeY=True)).reset_index()
         Reg = ConvertRDataframetoPandas(ro.r.DoOLSRegressionWithGeneName(SingleGroup, False, DoModelDiagnostics)).reset_index()
-        Reg = pd.concat([df.query('Group == @Group')[['subgroup','Group']].head(2).reset_index(), 
-            Reg.rename(columns={'index':'Coefficient'})], axis=1) 
+        Reg['Group'] = Group
         Out = Out.append(Reg)
-    Out = Out.dropna()
+    Out = Out.dropna().rename(columns={'index':'Coefficient'})
     if not DoModelDiagnostics:
         Out = Out[Out['Coefficient'] == 'LogScore']
     return(Out)
@@ -193,7 +209,14 @@ def GetPerDrugRegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='
 
 
 def DoTTestForAS(row):
-    '''This is a two-sided test for the null hypothesis that 2 independent samples have identical average (expected) values.'''
+    '''
+    For each AS event, performs a two-sided t-test for the null hypothesis that the two groups 
+    (low and high mutational load tumors) have the same expected average PSI values. 
+    Outputs a Pandas Series of p-values for how different the two groups are and the average 
+    change in PSI values between the two groups for each gene.
+    Parameters 
+    @row = a series of PSI values for each patient from @GetDeltaPSIForEachGene 
+    '''
     Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE')
     Samples['Barcode'] = Samples['Barcode'].str[0:12].str.replace('-','_')
     Low = row[list(set(row.index) & set(Samples[Samples['MutLoad'] < 10]['Barcode'].tolist()))].dropna()
@@ -205,6 +228,11 @@ def DoTTestForAS(row):
 
 
 def GetDeltaPSIForEachGene():
+    '''
+    Performs a t-test for each intron retention event in TCGA between low and high mutational load tumors,
+    removes intron retention events with missing calls and returns a table of average PSI changes for each gene,
+    including if the change is significant.
+    '''
     Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE')
     Samples['Barcode'] = Samples['Barcode'].str[0:12].str.replace('-','_')
     LowAndHigh = Samples[Samples['MutLoad'] < 10]['Barcode'].tolist() + Samples[Samples['MutLoad'] > 1000]['Barcode'].tolist()
@@ -218,10 +246,27 @@ def GetDeltaPSIForEachGene():
     return(df)
 
 
+
+def GetNumberGenesFilteredDueToPotentialEQTLs():
+    ASDir='/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
+    Filt = pd.read_csv(ASDir +'TCGA_AS_EventsRemovedRI_Counts_ThresholdByPSI_0.8')
+    Filt['Filtered'] = 1
+    NotFilt= pd.read_csv(ASDir + 'TCGA_AS_EventsNOTRemovedRI_Counts_ThresholdByPSI_0.8')
+    NotFilt['NotFiltered'] = 1
+    FilteredStats = Filt.groupby(['GeneName','as_id'])['Filtered'].size().reset_index().merge(
+        NotFilt.groupby(['GeneName','as_id'])['NotFiltered'].size().reset_index(),
+        left_on=['GeneName','as_id'], right_on=['GeneName','as_id'])
+    return(FilteredStats)
+
+
+
+
 ###########################################################
 ### Expression regression used for Fig. 2 TCGA and CCLE ###
 ###########################################################
 
+
+# DoRegressionByAge()
 # # GetNumberOfMutsAndCancerType(Dataset='TCGA')
 
 # GetPerDrugRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/DrugOLSRegressionEstimatesKsKaCCLE')
@@ -229,12 +274,19 @@ def GetDeltaPSIForEachGene():
 # GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa').to_csv(
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
 
+# GetCRISPRRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/CCLE_CRISPR_NormalizedByGene')
+
+
 # GetshRNARegression().to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/ExpressionOLSRegressionEstimatesKsKaCCLE')
+#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/shRNA_GLMM_KsKa_CCLE')
 
 
 # GetPerDrugRegression().to_csv(
 #     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE'
+# # )
+
+# GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa', DoModelDiagnostics=False, ShuffleTMB=True).to_csv(
+#    '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityShuffledLoad' 
 # )
 
 ################
@@ -247,4 +299,4 @@ def GetDeltaPSIForEachGene():
 
 # JacknifeAcrossCancerTypes('TCGA', DataType='Expression', MutType='KsKa')
 
-# JacknifeAcrossCancerTypes('TCGA', 'Expression', 'UVM')
+# JacknifeAcrossCancerTypes('TCGA', 'Expression', 'ACC')
