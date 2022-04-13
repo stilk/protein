@@ -128,7 +128,10 @@ PlotCircularCORUMTCGA = function(df) {
     ColorsForGrouping=colors$grouping
     df = merge(df, colors, by='grouping')
     df$term_name = gsub("\\(.*","",df$term_name) # remove parenthesis for visualization and repeat categories
-    df= df[!duplicated(df$term_name),] # Remove duplicate hits
+    df= df[!duplicated(df$term_name),] # Remove duplicate enrichment categoris
+    df$term_name = gsub("ribosome,","ribosome,\n",df$term_name) # add line break in term names for visualization
+    df$term_name = gsub("20S-PA28","20S-PA28\n",df$term_name) # add line break in term names for visualization
+    df$term_name = gsub("of cell cycle","",df$term_name) # add line break in term names for visualization
     GapForLegend = 1
     GroupsForOrdering = colors$grouping
     df = df %>% 
@@ -163,11 +166,11 @@ PlotCircularCORUMTCGA = function(df) {
         #theme(strip.text.y = element_blank(), legend.position='bottom') +
         #guides(fill=guide_legend(nrow=2,byrow=TRUE)) +
         geom_text(aes(label = term_name, y = ifelse(negative_log10_of_adjusted_p_value<4,5, negative_log10_of_adjusted_p_value+ GapForLegend), 
-            hjust = hjust, angle = angle), size = 5)+
-          annotate("text", x = rep(nrow(df),2), y = c(5,10), label = c("5","10") , color="grey", size=5 , alpha=1.4, angle=0, fontface="bold", hjust=0.25, vjust=2) + # Add annotation
+            hjust = hjust, angle = angle), size = 8)+
+          annotate("text", x = rep(nrow(df),2), y = c(5,10), label = c("5","10") , color="grey", size=8 , alpha=1.6, angle=0, fontface="bold", hjust=0.25, vjust=2) + # Add annotation
         coord_polar() 
         print(head(df))
-    ggsave(paste0(PlotDir, 'CircularRegressionGeneSetEnrichmentGlobalCORUMTCGA.pdf' ), width=12, height=12, units='in') 
+    ggsave(paste0(PlotDir, 'CircularRegressionGeneSetEnrichmentGlobalCORUMTCGA.pdf' ), width=15, height=15, units='in') 
 
 }
 
@@ -230,15 +233,15 @@ PlotCircularKeggTCGA = function(df) {
         scale_fill_identity(guide = "legend", labels = unique(df$grouping),breaks = unique(df$colors))  +
         theme_minimal() +
         theme(axis.text = element_blank(),axis.title = element_blank(), panel.grid = element_blank(),
-            legend.text=element_text(size=14),
+            legend.text=element_text(size=17),
             legend.position='bottom', plot.margin = unit(rep(-1,4), "cm"), legend.title = element_blank()) +  
         guides(fill=guide_legend(nrow=1,byrow=TRUE)) +
         geom_text(aes(label = term_name, y = ifelse(negative_log10_of_adjusted_p_value< 6,5, negative_log10_of_adjusted_p_value+ GapForLegend), 
-            hjust = hjust, angle = angle), size = 5)+ 
+            hjust = hjust, angle = angle), size = 8)+ 
             annotate("text", x = rep(nrow(df),4), y = c(5,10,15,20), label = c("5","10","15","20") , 
-            color="grey", size=5 , alpha=1, angle=0, fontface="bold", hjust=0.25, vjust=2) +
+            color="grey", size=8 , alpha=1.6, angle=0, fontface="bold", hjust=0.25, vjust=2) +
         coord_polar() 
-    ggsave(paste0(PlotDir, 'CircularRegressionGeneSetEnrichmentGlobalKEGGTCGA.pdf' ), width=12, height=14, units='in') 
+    ggsave(paste0(PlotDir, 'CircularRegressionGeneSetEnrichmentGlobalKEGGTCGA.pdf' ), width=15, height=18, units='in') 
 
 }
 
@@ -258,27 +261,29 @@ PlotRegCoefPerGroup = function(df) {
                  '11S Regulatory Particle', '19S Regulatory Particle','Mitochondrial Ribosomes', 'Cytoplasmic Ribosomes'))
         
     print(head(quantile))
-    Estimate = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(Estimate)), color=subgroup)) +  geom_boxplot() +
+    Estimate = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(Estimate)), color=subgroup)) +  
+                geom_vline(data = quantile, aes(xintercept = as.numeric(as.character(Estimate))), alpha=0.6, color='grey', size=1) +
+                geom_boxplot() +
                 theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='none') +
                 facet_wrap(~Dataset2, scales='free_x') +
                 scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
                 #geom_vline(data=filter(quantile, Group == '0.05'), aes(xintercept=Estimate))+
                 #geom_vline(xintercept=0, linetype='dashed', col = 'black') + 
-                geom_vline(data = quantile, aes(xintercept = as.numeric(as.character(Estimate))), alpha=0.3, color='grey', size=1) +
                 geom_text(data = quantile, aes(xintercept = as.numeric(as.character(Estimate)), 
-                    label=Label, y=12), colour="grey",  vjust="inward", size=3) +
+                    label=Label, y=12), colour="black",  vjust="inward", size=3) +
                 theme(strip.text = element_text(face="bold", size=12),  panel.grid.minor = element_blank(), panel.grid.major = element_blank())+
                 theme(panel.spacing = unit(2, "lines"), legend.title=element_blank())
                 
-    Rank = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) +  geom_boxplot() +
+    Rank = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) + 
+                geom_vline(xintercept= -log10(0.05), alpha=0.6, size=1, col = 'grey') + facet_wrap(~Dataset2, scales='free_x') +
+                geom_boxplot() +
                 theme_minimal() + labs(x='Negative Log10 of Adjusted P-Value', y='')  + theme(legend.position='bottom') +
                 facet_wrap(~Dataset2, scales='free_x') +
                 theme(legend.position='bottom', legend.title=element_blank()) +
                 scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
-                geom_vline(xintercept= -log10(0.05), alpha=0.5, size=1, col = 'grey') + facet_wrap(~Dataset2, scales='free_x') +
                 theme(strip.text = element_text(face="bold", size=12))
 
-    Combined = plot_grid(Estimate, Rank, rel_heights=c(0.85, 1), ncol = 1) 
+    Combined = plot_grid(Estimate, Rank, rel_heights=c(0.88, 1), ncol = 1) 
     ggsave(paste0(PlotDir, 'RegCoefPerGroups_TCGAandCCCLE.pdf' ), width=8, height=8, units='in')
 
 
@@ -886,4 +891,60 @@ PlotShuffledAndEmpiricalTMB = function(df) {
     geom_histogram(alpha=0.7, position="identity") 
            # facet_wrap(~Group) + geom_vline(0.05)
     ggsave(paste0(PlotDir, 'TCGA_ShuffledTMB_GLMM.pdf' ), width=7, height=11, units='in')
+}
+
+PlotGLMMRegressionCoefficientsByAge = function(df) {
+    print(head(df))
+    ggplot(df, aes(x=AgeBin, y=Estimate, fill=Group)) + 
+        geom_boxplot() + facet_wrap(~Group) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+        labs(x='Age Groups', y='Association Between Mutational Load and Expression (Beta Coefficient)')
+    ggsave(paste0(PlotDir, 'TCGA_GLMM_RegressionByAge.pdf' ), width=11, height=8, units='in')
+
+}
+
+PlotASFiltering = function(df) {
+    df$ID = 0
+    ggplot(df, aes(x=Filtered/(Filtered + NotFiltered))) + geom_histogram()+
+        theme_minimal() +
+        labs(y='Counts', x='Fraction of Patients Removed Per Intron Retention Event') 
+        #theme(axis.text.x=element_blank(), axis.ticks.x=element_blank()) 
+    ggsave(paste0(PlotDir, 'TCGA_ASEventsFiltered.pdf' ), width=5, height=3, units='in')
+}
+
+PlotshRNAAll = function(df) {
+    quantile = subset(df, df$subgroup == 'Quantile')
+    quantile$Label = paste0(as.numeric(as.character(quantile$Group))*100, '%')
+    df = subset(df, df$subgroup != 'Quantile')
+    df$AdjPval = p.adjust(df$pVal, method= 'fdr')
+    df$NegLog10Pval = -log10(as.numeric(as.character(df$AdjPval)))
+    df$SortedLevel = factor(df$Group, levels=c('Mitochondrial Chaperones', 'ER Chaperones','Small HS','HSP 100','HSP 90',
+                'HSP 70','HSP 60', 'HSP 40','20S Core','20S Catalytic Core','Immunoproteasome Core','Immunoproteasome Catalytic Core',
+                 '11S Regulatory Particle', '19S Regulatory Particle','Mitochondrial Ribosomes', 'Cytoplasmic Ribosomes'))
+        
+    print(head(quantile))
+    Estimate = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(Estimate)), color=subgroup)) +  geom_boxplot() +
+                theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='none') +
+
+                scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
+                #geom_vline(data=filter(quantile, Group == '0.05'), aes(xintercept=Estimate))+
+                #geom_vline(xintercept=0, linetype='dashed', col = 'black') + 
+                geom_vline(data = quantile, aes(xintercept = as.numeric(as.character(Estimate))), alpha=0.3, color='grey', size=1) +
+                geom_text(data = quantile, aes(xintercept = as.numeric(as.character(Estimate)), 
+                    label=Label, y=12), colour="grey",  vjust="inward", size=3) +
+                theme(strip.text = element_text(face="bold", size=12),  panel.grid.minor = element_blank(), panel.grid.major = element_blank())+
+                theme(panel.spacing = unit(2, "lines"), legend.title=element_blank())
+                
+    Rank = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) +  geom_boxplot() +
+                theme_minimal() + labs(x='Negative Log10 of Adjusted P-Value', y='')  + theme(legend.position='bottom') +
+                theme(legend.position='bottom', legend.title=element_blank()) +
+                scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
+                geom_vline(xintercept= -log10(0.05), alpha=0.5, size=1, col = 'grey') + 
+                theme(strip.text = element_text(face="bold", size=12))
+    Combined = plot_grid(Estimate, Rank, ncol = 3) 
+    ggsave(paste0(PlotDir, 'shRNA_CCLE_AllGenesComparedToProteostasis.pdf' ), width=8, height=8, units='in')
+
+
+
 }
