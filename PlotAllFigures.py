@@ -1,4 +1,3 @@
-
 import pandas as pd
 import os
 import numpy as np
@@ -72,14 +71,14 @@ def GetFigureInput(FigureNum):
         gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment( ConvertPandasDFtoR(GeneSet)))
         return(ConvertPandasDFtoR(gse[['term_name','source','p_value']]))
     elif FigureNum == 'Groups_CCLEAndTCGA':
-        tcga = pd.read_csv(InputDir + 'Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGA').assign(Dataset='TCGA')
-        ccle = pd.read_csv(InputDir + 'Regression/ExpressionOLSRegressionEstimatesKsKaCCLE').assign(Dataset='CCLE')
-        all = pd.concat([tcga[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']], 
-                         ccle[['Pr...t..','adj.pval','Estimate','GeneName','Unnamed: 0','Dataset']]]).rename(columns={'Pr...t..':'pval'})
+        tcga = pd.read_csv(InputDir + 'Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Dataset='TCGA')
+        ccle = pd.read_csv(InputDir + 'Regression/ERChapAdded/ExpressionOLSRegressionEstimatesKsKaCCLE').assign(Dataset='CCLE')
+        all = pd.concat([tcga[['Pr...t..','Estimate','GeneName','Unnamed: 0','Dataset']], 
+                         ccle[['Pr...t..','Estimate','GeneName','Unnamed: 0','Dataset']]]).rename(columns={'Pr...t..':'pval'})
         all['Coefficient'] = all['Unnamed: 0'].str.replace('\d+', '')
         all = all[all['Coefficient'] == 'LogScore']
         quantile = all.groupby(['Dataset'])['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'level_1':'Group'}).assign(
-        subgroup='Quantile').assign(pval = 0).assign(GeneName='')
+            subgroup='Quantile').assign(pval = 0).assign(GeneName='')
         groups = GetGeneAnnotationsOfInterest()
         all = all.merge(groups, left_on='GeneName', right_on='Hugo')
         all = pd.concat([all[['Dataset','Group','Estimate','subgroup','pval','GeneName']], quantile])
@@ -130,6 +129,7 @@ def GetFigureInput(FigureNum):
             df = df[df['Coefficient'] == 'LogScore'] 
             Out = Out.append(df.drop(columns={'Unnamed: 0'}))
         df = GetPerDrugRegression().assign(CancerTypeRemoved='All Cancers')
+        df = df[df['Coefficient'] == 'LogScore'] 
         Out = Out.append(df)
         return(ConvertPandasDFtoR(Out))
     elif FigureNum == 'JacknifeshRNACCLE':
@@ -141,7 +141,7 @@ def GetFigureInput(FigureNum):
             df = df[df['Coefficient'] == 'LogScore'] 
             Out = Out.append(df.drop(columns={'Unnamed: 0'}))
         df = GetshRNARegression().assign(CancerTypeRemoved='All Cancers')
-        Out = Out.append(df)
+        Out = Out[['Estimate','Pr...t..','Group','CancerTypeRemoved']].append(df[['Estimate','Pr...t..','Group','CancerTypeRemoved']])
         return(ConvertPandasDFtoR(Out))
     elif FigureNum == 'AllDrugsByLoad':
         df = pd.read_csv(os.getcwd() + '/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE')
@@ -173,6 +173,35 @@ def GetFigureInput(FigureNum):
                     left_on='Barcode',right_on='Barcode',how='outer').rename(columns={'MutLoad':'CNV'})
         tcga_merged = tcga_muts.merge(tcga_cnvs, left_on='Barcode',right_on='Barcode',how='outer').dropna()  
         return(ConvertPandasDFtoR(pd.concat([tcga_merged.assign(Dataset='TCGA'), ccle_merged.assign(Dataset='CCLE')])))
+    elif FigureNum == 'TMB_Shuffling':
+        shuffled = pd.read_csv(os.getcwd() + '/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityShuffledLoad').assign(Group='Shuffled')
+        true = pd.read_csv(os.getcwd() + '/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Group='True')
+        combined = pd.concat([shuffled,true])
+        combined['Coefficient'] = combined['Unnamed: 0'].str.replace('\d+', '')
+        combined = combined[combined['Coefficient'] == 'LogScore']
+        return(ConvertPandasDFtoR(combined))
+    elif FigureNum == 'CorrelationWithAge':
+        #exp = pd.read_csv(InputDir + 'Regression/TCGA_GLMM_ByAgeGroupsBinnedEqually')
+        exp = pd.read_csv(InputDir + 'Regression/TCGA_GLMM_ByAgeGroups')
+        exp['Coefficient'] = exp['Unnamed: 0'].str.replace('\d+', '')
+        exp = exp[exp['Coefficient'] == 'LogScore']
+        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
+        exp = exp.merge(GetSubsetOfGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
+        return(ConvertPandasDFtoR(exp.dropna())) 
+    elif FigureNum == 'CCLE_RNAi_All':
+        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/AchillesOnlyRNAiOLSRegressionEstimatesNoNormKsKaCCLE')
+        #df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/RNAiOLSRegressionEstimatesKsKaCCLE')
+        df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+        df = df[df['Coefficient'] == 'LogScore']
+        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
+        df = df.merge(GetSubsetOfGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
+        quantile = df['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'index':'Group'}).assign(
+            subgroup='Quantile').assign(pVal = 0).assign(GeneName='')
+        all = pd.concat([df[['Group','Estimate','subgroup','pVal','GeneName']].dropna(), quantile])
+        return(ConvertPandasDFtoR(all.astype(str))) 
+    elif FigureNum == 'ASEventsFiltered':
+        filtered = GetNumberGenesFilteredDueToPotentialEQTLs()
+        return(ConvertPandasDFtoR(filtered))
 
 
 
@@ -184,6 +213,7 @@ def GetFigure(Figure):
         out = GetFigureInput('AS_Delta_PSI')
         SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
     elif Figure == 'AS_PSI': #Fig 2B
+        # Raw data generated from fxn in GetExpLevelsForASEvents(ASType, PSI_Threshold) in Splicing.py
         SetUpPlottingPackages(); ro.r.VisualizeAS()
     elif Figure == 'GlobalGSE_TCGA_Regression':  #fig 1B
         foo = GetFigureInput('GlobalGSE_TCGA_Regression')
@@ -215,6 +245,15 @@ def GetFigure(Figure):
     elif Figure == 'PSI_Supplemental':
         ro.r.VisualizeAllASThresholds() # supplemental figX A
         ro.r.VisualizeAllAS() # supplemental figX B
-        
-
-    
+    elif Figure == 'TMB_Shuffling': #supplemental new? (TBD)
+        df = GetFigureInput('TMB_Shuffling')
+        SetUpPlottingPackages(); ro.r.PlotShuffledAndEmpiricalTMB(df)
+    elif Figure == 'CorrelationWithAge':
+        df = GetFigureInput('CorrelationWithAge')
+        SetUpPlottingPackages(); ro.r.PlotGLMMRegressionCoefficientsByAge(df)
+    elif Figure == 'CCLE_RNAi_All':
+        df = GetFigureInput('CCLE_RNAi_All')
+        SetUpPlottingPackages(); ro.r.PlotshRNAAll(df)
+    elif Figure == 'ASEventsFiltered':
+        df = GetFigureInput('ASEventsFiltered')
+        SetUpPlottingPackages(); ro.r.PlotASFiltering(df)
