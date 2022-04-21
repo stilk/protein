@@ -79,9 +79,7 @@ VisualizeAllASThresholds = function(AS_Type='RI') {
 
 
 
-VisualizeAS = function() {
-    Dir = '/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
-    df = read.table('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8' ,sep=',', header=T)
+VisualizeAS = function(df, Filtered) {
     df$Bin = cut(df$MutLoad, breaks=c(0,50,100,500,1000,50000), 
                     labels=c('0-50','50-100','100-500','500-1000','1000->10,000'))
     df = na.omit(df); df$AS = 'RI'; df$Threshold = 0.8
@@ -100,7 +98,11 @@ VisualizeAS = function() {
         geom_ribbon(aes(ymin=upper.ci, ymax=lower.ci), alpha=.7, position=position_dodge(.9)) +
         labs(y=expression(atop(underline("Under-expressed Transcripts With Intron Retention"), paste("All Transcripts With Intron Retention"))),
              x= 'Number of Protein Coding Mutations')
-    ggsave(paste0(PlotDir, 'AS_RI_PerTumor_PSI_TCGA.pdf' ), width=4.5, height=4.5, units='in') 
+    if (Filtered == 'True') {
+         ggsave(paste0(PlotDir, 'AS_RI_PerTumor_PSI_TCGA.pdf' ), width=4.5, height=4.5, units='in') 
+    } else {
+         ggsave(paste0(PlotDir, 'AS_RI_PerTumor_PSI_TCGA_NoFilterForeQTL.pdf' ), width=5, height=4.5, units='in') 
+    }
 
 }
 
