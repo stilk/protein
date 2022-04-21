@@ -55,7 +55,7 @@ def GetAvgTranscriptLevelsForAS():
     
 
 
-def GetExpLevelsForASEvents(ASType, PSI_Threshold):
+def GetExpLevelsForASEvents(ASType, PSI_Threshold, FilterForeQTLS=True):
     '''
     Compares expression levels for each gene by cancer subtype in TCGA and merges alternative splicing calls
     for the same gene. Outputs a table for each patient (1) how many total transcripts there are with AS calls in the
@@ -72,24 +72,22 @@ def GetExpLevelsForASEvents(ASType, PSI_Threshold):
     Exp = Exp.merge(GetPointMutations('TCGA'), left_on=['Barcode','GeneName'], right_on=['Barcode','Hugo_Symbol'], how='left')
     Exp['Hugo_Symbol'] = Exp['Hugo_Symbol'].replace(np.nan, 0) 
     Exp['Barcode'] = Exp['Barcode'].str.replace('-','_').str[0:12]
-    # Merge expression values with AS events
+    # Merge expression values with AS events and use PSI threshold to count events as spliced in or not
     AS = GetAlternativeSplicingData(ASType).stack().reset_index().rename(columns={0:'PSI','level_6':'Barcode','symbol':'GeneName'})
     Out = AS.merge(Exp[['Barcode','GeneName','DeviationFromMean','DepletedTranscript','OverExpressedTranscript','Hugo_Symbol']],
         left_on=['Barcode','GeneName'], right_on=['Barcode','GeneName'])
     Out = pd.concat([Out[Out['PSI'] < PSI_Threshold].assign(Group='Not_Spliced_In'), Out[Out['PSI'] >= PSI_Threshold].assign(Group='Spliced_In')])
+    # Save output for supplemental figure to asses how many events are being removed due to potential eQTL effects
     Out[Out['Hugo_Symbol'] != 0].to_csv(OutDir + 'TCGA_AS_EventsRemoved'+ ASType +'_Counts_ThresholdByPSI_' + str(PSI_Threshold))
     Out[Out['Hugo_Symbol'] == 0].to_csv(OutDir + 'TCGA_AS_EventsNOTRemoved'+ ASType +'_Counts_ThresholdByPSI_' + str(PSI_Threshold))
-    Out = Out[Out['Hugo_Symbol'] == 0] # remove AS events that overlap with mutations
-    drivers = pd.read_csv('/labs/ccurtis2/tilk/scripts/cancer-HRI/Data/GeneSets/drivers_Bailey2018.txt', header=None)[0]
-    Out['Driver'] = Out['GeneName'].isin(drivers)
-    Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE')
+    if FilterForeQTLS:
+        Out = Out[Out['Hugo_Symbol'] == 0] # remove AS events that overlap with mutations
+    Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE') # add cancer type to compare exp levels
     Samples['Barcode'] = Samples['Barcode'].str[0:12].str.replace('-','_')
     Out = Out.merge(Samples, left_on='Barcode', right_on='Barcode', how='left')
     Out['NMD'] = (Out['Group'] == 'Spliced_In') & (Out['DepletedTranscript'] == True)
     Out.groupby(['Barcode','MutLoad','NMD']).size().unstack().reset_index().replace(np.nan,0).to_csv(
-        OutDir + 'TCGA_'+ ASType +'_Counts_ThresholdByPSI_' + str(PSI_Threshold))
-    Out.groupby(['Barcode','MutLoad','Driver','NMD']).size().unstack().reset_index().replace(np.nan,0).to_csv(
-        OutDir + 'TCGA_'+ ASType +'_Counts_ThresholdByPSI_' + str(PSI_Threshold) + '_ByDrivers_')
+        OutDir + 'TCGA_'+ ASType +'_Counts_ThresholdByPSI_' + str(PSI_Threshold) + 'FiltereQTLS_' + str(FilterForeQTLS))
     print('Done!')
     return(Out)
 
@@ -97,7 +95,7 @@ def GetExpLevelsForASEvents(ASType, PSI_Threshold):
 
     
 
-# # # ###############
+# # # # ###############
 
 # thresh= 0.8
 
@@ -109,3 +107,5 @@ def GetExpLevelsForASEvents(ASType, PSI_Threshold):
 # GetExpLevelsForASEvents(ASType='AT', PSI_Threshold=thresh)
 # GetExpLevelsForASEvents(ASType='AA', PSI_Threshold=thresh)
 # GetExpLevelsForASEvents(ASType='ME', PSI_Threshold=thresh)
+
+# GetExpLevelsForASEvents(ASType='RI', PSI_Threshold=thresh, FilterForeQTLS=False) # used in supplemental X
