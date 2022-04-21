@@ -199,9 +199,15 @@ def GetFigureInput(FigureNum):
             subgroup='Quantile').assign(pVal = 0).assign(GeneName='')
         all = pd.concat([df[['Group','Estimate','subgroup','pVal','GeneName']].dropna(), quantile])
         return(ConvertPandasDFtoR(all.astype(str))) 
-    elif FigureNum == 'ASEventsFiltered':
+    elif FigureNum == 'NumASEventsFiltered':  # supplemental figure X
         filtered = GetNumberGenesFilteredDueToPotentialEQTLs()
         return(ConvertPandasDFtoR(filtered))
+    elif FigureNum == 'AS_PSI_NotFiltered': #supplemental figure X
+        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8FiltereQTLS_False')
+        return(ConvertPandasDFtoR(df))
+    elif FigureNum == 'AS_PSI': #Fig2A
+        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8')
+        return(ConvertPandasDFtoR(df))
 
 
 
@@ -209,12 +215,16 @@ def GetFigure(Figure):
     if Figure == 'Groups_CCLEAndTCGA': # Fig 3A
         all = GetFigureInput('Groups_CCLEAndTCGA')
         SetUpPlottingPackages(); ro.r.PlotRegCoefPerGroup(all)
-    elif Figure == 'AS_Delta_PSI': # Fig 2A
+    elif Figure == 'AS_Delta_PSI': # Fig 2b
         out = GetFigureInput('AS_Delta_PSI')
         SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
-    elif Figure == 'AS_PSI': #Fig 2B
+    elif Figure == 'AS_PSI': #Fig 21
         # Raw data generated from fxn in GetExpLevelsForASEvents(ASType, PSI_Threshold) in Splicing.py
-        SetUpPlottingPackages(); ro.r.VisualizeAS()
+        df = GetFigureInput('AS_PSI')
+        SetUpPlottingPackages(); ro.r.VisualizeAS(df, Filtered='True')
+    elif Figure == 'AS_PSI_NotFiltered':
+        df = GetFigureInput('AS_PSI_NotFiltered')
+        SetUpPlottingPackages(); ro.r.VisualizeAS(df, Filtered='False')
     elif Figure == 'GlobalGSE_TCGA_Regression':  #fig 1B
         foo = GetFigureInput('GlobalGSE_TCGA_Regression')
         SetUpPlottingPackages(); ro.r.PlotCircularCORUMTCGA(foo)
