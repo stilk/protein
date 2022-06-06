@@ -50,8 +50,6 @@ VisualizeAllAS = function(Threshold='0.8') {
 
 
 
-
-
 VisualizeAllASThresholds = function(AS_Type='RI') {
     Dir = '/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
     Thresholds = c('0.5','0.6','0.7','0.8','0.9')
@@ -79,7 +77,7 @@ VisualizeAllASThresholds = function(AS_Type='RI') {
 
 
 
-VisualizeAS = function(df, Filtered) {
+VisualizeAS = function(df) {
     df$Bin = cut(df$MutLoad, breaks=c(0,50,100,500,1000,50000), 
                     labels=c('0-50','50-100','100-500','500-1000','1000->10,000'))
     df = na.omit(df); df$AS = 'RI'; df$Threshold = 0.8
@@ -98,7 +96,7 @@ VisualizeAS = function(df, Filtered) {
         geom_ribbon(aes(ymin=upper.ci, ymax=lower.ci), alpha=.7, position=position_dodge(.9)) +
         labs(y=expression(atop(underline("Under-expressed Transcripts With Intron Retention"), paste("All Transcripts With Intron Retention"))),
              x= 'Number of Protein Coding Mutations')
-    if (Filtered == 'True') {
+    if (df$Filtered == 'Filtered') {
          ggsave(paste0(PlotDir, 'AS_RI_PerTumor_PSI_TCGA.pdf' ), width=4.5, height=4.5, units='in') 
     } else {
          ggsave(paste0(PlotDir, 'AS_RI_PerTumor_PSI_TCGA_NoFilterForeQTL.pdf' ), width=5, height=4.5, units='in') 
@@ -362,8 +360,8 @@ PlotDeltaPSICircular = function(df) {
 PlotDeltaPSI = function(df) {
     df$term_name  = gsub(', ATP synthesis by chemiosmotic coupling, and heat production by uncoupling proteins.', "", df$term_name)  
     df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
-    df$Group = gsub('PosPSI','More Intron Retention\n(In High vs. Low)', df$Group)
-    df$Group = gsub('NegPSI','Less Intron Retention\n(In High vs. Low)', df$Group)
+    df$Group = gsub('PosPSI','Less Intron Retention\n(In High vs. Low)', df$Group)
+    df$Group = gsub('NegPSI','More Intron Retention\n(In High vs. Low)', df$Group)
     rankingDF = df %>% group_by(Group) %>% summarise(max = max(negative_log10_of_adjusted_p_value))
     rankingDF = rankingDF[order(rankingDF$max),]
     rankingDF$rank = nrow(rankingDF):1
@@ -431,7 +429,7 @@ PlotJacknifedDrugsAcrossGroups = function(df) {
        # scale_fill_gradientn(colours=c("red","white","grey"), limits=c(1,-1)) +
         scale_fill_gradientn(colors=c("red","white","blue"), 
            values=rescale(c(low=-0.5, mid=0, high=0.1)), breaks=c(-0.5,-0.4,-0.3,-0.2,-0.1,0,0.1),limits=c(-0.5,0.1))+
-        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8) +
+        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 7, vjust = 0.85) +
         theme_minimal() +
         #coord_flip() +
         #facet_wrap(~subgroup, scales='free', ncol=5) +
@@ -446,6 +444,7 @@ PlotJacknifedDrugsAcrossGroups = function(df) {
 
 
 PlotJacknifedshRNAAcrossGroups = function(df) {
+
     df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
     df$Sig = ifelse(df$Pr...t.. < 0.05, '*','')
     df$Sig = ifelse(df$Pr...t.. < 0.005, '**', df$Sig)
@@ -453,15 +452,15 @@ PlotJacknifedshRNAAcrossGroups = function(df) {
     df$Dummy = '' #'Protein Coding\nMutations'
     df$Group = gsub('mic Rib', 'mic\nRib', df$Group); df$Group = gsub('ial Rib', 'ial\nRib', df$Group); df$Group = gsub('ial Ch', 'ial\nCh', df$Group)
     df$Group = gsub('ory Pa', 'ory\nPa', df$Group)
-    print(unique(df$Group))
+    df$subgroup = gsub('Ribosomes','Translation',df$subgroup)
     df$Group2 = factor(df$Group, levels= c('HSP 100','HSP 90','HSP 70','HSP 60','Mitochondrial\nChaperones','ER Chaperones','Small HS',
                 '19S Regulatory\nParticle','20S Core','Mitochondrial\nRibosomes','Cytoplasmic\nRibosomes'))
     ggplot(df, aes(y=CancerTypeRemoved, x = Group2 ,fill=Estimate)) + geom_tile()+
         #scale_fill_viridis(discrete=FALSE) +
         #scale_fill_gradientn(colours=c("blue","black","red")) +
-        scale_fill_gradientn(colors=c("red","grey","blue"), 
+        scale_fill_gradientn(colors=c("red","white","blue"), 
             values=rescale(c(min(df$Estimate),0, max(df$Estimate))),limits=c(min(df$Estimate),max(df$Estimate)))+
-        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8) +
+        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8, vjust = 0.85) +
         theme_minimal() +
         #coord_flip() +
         #facet_wrap(~subgroup, scales='free', ncol=5, space='free_x') +
@@ -717,9 +716,10 @@ GetAnnotatedMOA = function() {
                                         'HIV attachment inhibitor','HIV integrase inhibitor','RSV fusion inhibitor'))
     )
     return(merge(AllDrugs, PlottingGroup, by.x='subgroup', by.y='NewGroup', all.x=T))
-    
-
 }
+
+
+
 
 PlotFractionOfSigDrugsForAll = function(df) {
     df$log10pval= log10(as.numeric(as.character(df$pVal)))
@@ -874,6 +874,7 @@ PlotLinearityOfExpVars = function(df, Dataset) {
 PlotMultiCollinearityOfSNVsAndCNVs = function(df) {
     library('ggcorrplot')
     print(head(df))
+    df$CNA = df$CNV; df$CNV = NULL # change cnvs = cnas to be consistent with text
     ccle = subset(df, df$Dataset == 'CCLE'); row.names(ccle) = ccle$Barcode; ccle$Dataset=NULL; ccle$Barcode=NULL
     tcga = subset(df, df$Dataset == 'TCGA'); row.names(tcga) = tcga$Barcode; tcga$Dataset=NULL; tcga$Barcode=NULL
     ccle.cor = cor(ccle, method = c("pearson")); tcga.cor = cor(tcga, method = c("pearson"))
@@ -946,7 +947,17 @@ PlotshRNAAll = function(df) {
                 theme(strip.text = element_text(face="bold", size=12))
     Combined = plot_grid(Estimate, Rank, ncol = 3) 
     ggsave(paste0(PlotDir, 'shRNA_CCLE_AllGenesComparedToProteostasis.pdf' ), width=8, height=8, units='in')
+}
 
+
+PlotNumASEventsFiltered = function(df) {
+    df$Group = gsub('_',' ', df$Group)
+    df = melt(df)
+    print(head(df))
+    PlotOut = ggplot(df, aes(x=Group, y=value , fill=variable)) + geom_bar(stat='identity', position = "dodge") + theme_minimal() +
+        labs(x='', y='Number of Alternative Splicing Events') +  theme(legend.title = element_blank()) 
+        #scale_y_log10("y", breaks = trans_breaks("log10", function(x) 10^x), labels = trans_format("log10", math_format(10^.x)))
+    ggsave(paste0(PlotDir, 'TCGA_CountsFilteredASEvents.pdf' ), width=5, height=5, units='in')
 
 
 }
