@@ -141,3 +141,14 @@ DoModelDiagnostics = function(df, model) {
     }
     return(Diagnostics)
 }
+
+
+DoGeneSetEnrichment = function(GeneSet) {
+    # Outputs a dataframe of gene set enrichment analysis results
+    # Parameters:
+    #   @GeneSet = a vector of gene names to query
+    library('gprofiler2')
+    result = data.frame(gost(GeneSet)$result)
+    return(result[c('source','term_name','p_value')])
+}
+
