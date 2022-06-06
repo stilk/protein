@@ -1,3 +1,7 @@
+'''
+This script uses the rpy2 package to perform regression analyses (on all different data types and datasets) in python using code in R. 
+'''
+
 
 import pandas as pd
 import os
@@ -5,20 +9,18 @@ import numpy as np
 from pandas.core.frame import DataFrame
 import os.path
 from GetRCodeIntoPython import *
+from GetAnnotations import *
 from GetData import * 
-from Splicing import * 
 
 
 def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
     ''' 
-    Calculates mixed effects regression (controlling for cancer type) coefficients for
-    the effect of expression/drug response/rnai response to mutational load.
-    @Dataset = `CCLE`, `GTEX` or `TCGA`
-    @DataType = `Expression`, `RNAi`, `Drug`, `AS` or `Protein`
+    Outputs a dataframe used for regression analysis which compares how a variable of interest (e.g. expression values) 
+    changes in response to to mutational load. Functions for aggregating input data are imported from @GetData.
+    @Dataset = `CCLE` or `TCGA`
+    @DataType = `Expression`, `RNAi`, `Drug`, `AS` (Alternative Splicing) or `Protein`
     @AllDrugs = Optional variable for drug input data, if false will only report proteostasis drug
     '''
-    if Dataset == "TS": # Just used for debugging; remove later
-        return(GetExpressionData(Dataset='TS'))
     if DataType == 'RNAi':
         Values = GetRNAiResponseData()
     elif DataType == 'Drug':
@@ -30,7 +32,6 @@ def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
     elif DataType == 'AS':
         Values = GetAlternativeSplicingData()
     Muts = AnnotateMutationalLoad(GetPointMutations(Dataset), MutType=MutType)
-    #Muts['NormalizedMutLoad'] = (Muts['MutLoad'] - Muts['MutLoad'].mean()) / Muts['MutLoad'].std()
     Purity = GetTumorPurity()
     Tissue = GetTissueType(Dataset)
     if DataType == 'AS':
@@ -49,11 +50,18 @@ def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
 
 
 
-def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=False, ShuffleTMB=False):  
+def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=False):  
+    '''
+    Uses linear regression to measure the association of expression and mutational load. Input data for regressinon is 
+    taken from @GetRegressionInput. Depending on the dataset, will use OLS or GLMM (mixed effect) regression.
+    Outputs dataframe of regression results.
+    @Dataset = `CCLE` or `TCGA` 
+    @MutTtype = variable denoting how to define mutational load (default is all protein coding mutations, i.e. 'KsKa')
+    @DoModelDiagnostics = If true, will compare fitted values vs residuals in a given regression model to assess heteroscedasticity.
+                        Model diagnostics are performed by @GetRegressionModelDiagnostics.
+    '''
     SetUpRegressionPackages()
     df = GetRegressionStatsInput(Dataset, DataType, MutType)
-    if ShuffleTMB: # Used to compare distribution of null vs empirical p-values for empirical FDR in Fig.1?
-        df['LogScore'] = df.groupby(['type'])['LogScore'].transform(np.random.permutation) # shuffle mut load within cancer types 
     R = ConvertPandasDFtoR(df)
     if Dataset == 'CCLE':
         return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', True, DoModelDiagnostics)))
@@ -62,6 +70,13 @@ def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoMo
     
 
 def DoRegressionByAge(DataType='Expression', MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/'):
+    '''
+    Uses function @GetExpressionRegression to perform linear regression to measure the association of 
+    expression and mutational load by each age group in TCGA. Outputs dataframe of regression results.
+    @DataType = `Expression`,`RNAi`, `Drug`, `AS` (Alternative Splicing) or `Protein`
+    @MutTtype = variable denoting how to define mutational load (default is all protein coding mutations, i.e. 'KsKa')
+    @OutDir = Output directory to write to file
+    '''
     Output = pd.DataFrame() # Where results are appended to
     SetUpRegressionPackages()
     df = GetRegressionStatsInput('TCGA', DataType, MutType)
@@ -72,30 +87,66 @@ def DoRegressionByAge(DataType='Expression', MutType='KsKa', OutDir=os.getcwd() 
         RegResult = ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(ConvertPandasDFtoR(AgeSubset), 'MixedEffect', True, False))
         RegResult['AgeBin'] = AgeGroup
         Output = Output.append(RegResult)
+    return(Output)
     Output.to_csv(OutDir + 'TCGA_GLMM_ByAgeGroups')
 
-def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Diagnostics/'):
+
+def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa'), DoModelDiagnostics=False):
     '''
-    Calculates Pearson's R for fitted values with residuals for the full regression model, 
-    and residuals vs all explanatory variables. Outputs statistics for each gene.
+    Uses linear regression to measure the association of viability after expression knockdown and mutational load. 
+    Input data for regressinon is taken from @GetRegressionInput. Outputs dataframe of regression results.
+    @Dataset = `CCLE` or `TCGA` 
+    @MutTtype = variable denoting how to define mutational load (default is all protein coding mutations, i.e. 'KsKa')
+    @DoModelDiagnostics = If true, will compare fitted values vs residuals in a given regression model to assess heteroscedasticity.
+                        Model diagnostics are performed by @GetRegressionModelDiagnostics.
     '''
-    if DataType == 'Expression':
-        df = GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=True)
-    elif DataType == 'shRNA':
-        df = GetshRNARegression(DoModelDiagnostics=True)
-    elif DataType == 'Drug':
-        df = GetPerDrugRegression(DoModelDiagnostics=True)
-    df.to_csv(OutDir + Dataset + DataType + MutType + 'ModelDiagnosticResidualVsFittedVals')
- 
+
+    SetUpRegressionPackages()
+    groups = GetGeneAnnotationsOfInterest()
+    df = df.merge(groups, left_on='GeneName', right_on='Hugo')
+    Out = pd.DataFrame()
+    for Group in groups['Group'].unique():
+        SingleGroup = ConvertPandasDFtoR(df[df['Group'] == Group].dropna()[['LogScore','Value','GeneName']])
+        Reg = ConvertRDataframetoPandas(ro.r.DoOLSRegressionWithGeneName(SingleGroup, False, DoModelDiagnostics)).reset_index()
+        Reg['Group'] = Group
+        Reg['subgroup'] = groups[groups['Group'] == Group]['subgroup'].unique()[0]
+        Out = Out.append(Reg)
+    Out = Out.dropna().rename(columns={'index':'Coefficient'})
+    if not DoModelDiagnostics:
+        Out = Out[Out['Coefficient'] == 'LogScore']
+    return(Out)
+
+def GetPerDrugRegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='Drug', MutType='KsKa'), DoModelDiagnostics=False):
+    '''
+    Uses linear regression to measure the association of viability after drug inhibition and mutational load. 
+    Input data for regressinon is taken from @GetRegressionInput. Outputs dataframe of regression results.
+    @Dataset = `CCLE` or `TCGA` 
+    @MutTtype = variable denoting how to define mutational load (default is all protein coding mutations, i.e. 'KsKa')
+    @DoModelDiagnostics = If true, will compare fitted values vs residuals in a given regression model to assess heteroscedasticity.
+                        Model diagnostics are performed by @GetRegressionModelDiagnostics.
+    '''
+    SetUpRegressionPackages()
+    Out = pd.DataFrame()
+    for Drug in df['name'].unique():
+        SingleDrug = ConvertPandasDFtoR(df[df['name'] == Drug].dropna())
+        Reg= ConvertRDataframetoPandas(ro.r.DoLinearRegression(SingleDrug, True, DoModelDiagnostics)).reset_index()
+        Reg = pd.concat([df.query('name == @Drug')[['name','subgroup','Group','screenType']].head(2).reset_index(), 
+            Reg.rename(columns={'index':'Coefficient'})], axis=1) ## Add drug name and group to regression output
+        Out = Out.append(Reg)
+    return(Out)
+
 
 
 def JacknifeAcrossCancerTypes(Dataset, DataType, CancerTypeToRemove='', MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Jacknife/'):
     ''' 
     Removes a cancer type from the dataset and re-calculates regression coefficients.
-    Writes jacknifed regression coefficients to file since files per gene are huge.
-    Only set up for per gene for now. 
+    Writes jacknifed regression coefficients to file since files per gene are huge. Only set up for per gene for now. 
+    @Dataset = `CCLE` or `TCGA` 
+    @DataType = `Expression`,`RNAi`, `Drug`, `AS` (Alternative Splicing) or `Protein`
+    @MutTtype = variable denoting how to define mutational load (default is all protein coding mutations, i.e. 'KsKa')
     @CancerTypeToRemove = a string of which individual cancer type to remove. If empty loops through
         all cancer types. If not, removes cancer types of that string and exists loop after 1 iteration.
+     @OutDir = Output directory to write to file
     '''
     SetUpRegressionPackages()
     AllCancerTypes = GetRegressionStatsInput(Dataset, DataType, MutType) # Get input data for all cancer types
@@ -127,133 +178,25 @@ def JacknifeAcrossCancerTypes(Dataset, DataType, CancerTypeToRemove='', MutType=
             break
         
 
-
-def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa'), DoModelDiagnostics=False):
-    ''' Grouped regression '''
-    SetUpRegressionPackages()
-    groups = GetGeneAnnotationsOfInterest()
-    df = df.merge(groups, left_on='GeneName', right_on='Hugo')
-    Out = pd.DataFrame()
-    for Group in groups['Group'].unique():
-        SingleGroup = ConvertPandasDFtoR(df[df['Group'] == Group].dropna()[['LogScore','Value','GeneName']])
-        #Reg= ConvertRDataframetoPandas(ro.r.DoLinearRegression(SingleGroup, NormalizeY=True)).reset_index()
-        Reg = ConvertRDataframetoPandas(ro.r.DoOLSRegressionWithGeneName(SingleGroup, False, DoModelDiagnostics)).reset_index()
-        Reg['Group'] = Group
-        Reg['subgroup'] = groups[groups['Group'] == Group]['subgroup'].unique()[0]
-        Out = Out.append(Reg)
-    Out = Out.dropna().rename(columns={'index':'Coefficient'})
-    if not DoModelDiagnostics:
-        Out = Out[Out['Coefficient'] == 'LogScore']
-    return(Out)
-
-
-
-def GetPerDrugRegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='Drug', MutType='KsKa'), DoModelDiagnostics=False):
-    '''Performs linear regression on CCLE lines with load as the predictor and viability at the y.''' 
-    SetUpRegressionPackages()
-    Out = pd.DataFrame()
-    for Drug in df['name'].unique():
-        SingleDrug = ConvertPandasDFtoR(df[df['name'] == Drug].dropna())
-        Reg= ConvertRDataframetoPandas(ro.r.DoLinearRegression(SingleDrug, True, DoModelDiagnostics)).reset_index()
-        Reg = pd.concat([df.query('name == @Drug')[['name','subgroup','Group','screenType']].head(2).reset_index(), 
-            Reg.rename(columns={'index':'Coefficient'})], axis=1) ## Add drug name and group to regression output
-        Out = Out.append(Reg)
-    return(Out)
-
-
-def DoTTestForAS(row):
+def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Diagnostics/'):
     '''
-    For each AS event, performs a two-sided t-test for the null hypothesis that the two groups 
-    (low and high mutational load tumors) have the same expected average PSI values. 
-    Outputs a Pandas Series of p-values for how different the two groups are and the average 
-    change in PSI values between the two groups for each gene.
-    Parameters 
-    @row = a series of PSI values for each patient from @GetDeltaPSIForEachGene 
+    Calculates Pearson's R for fitted values with residuals for the full regression model, 
+    and residuals vs all explanatory variables. Outputs statistics for each gene. Outputs dataframe of diagnostics results.
+    @Dataset = `CCLE` or `TCGA` 
+    @DataType = `Expression`,`RNAi`, `Drug`, `AS` (Alternative Splicing) or `Protein`
+    @MutTtype = variable denoting how to define mutational load (default is all protein coding mutations, i.e. 'KsKa')
+    @OutDir = Output directory to write to file
     '''
-    Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE')
-    Samples['Barcode'] = Samples['Barcode'].str[0:12].str.replace('-','_')
-    Low = row[list(set(row.index) & set(Samples[Samples['MutLoad'] < 10]['Barcode'].tolist()))].dropna()
-    High = row[list(set(row.index) & set(Samples[Samples['MutLoad'] > 1000]['Barcode'].tolist()))].dropna()
-    return( pd.Series({'pVal': stats.ttest_ind(Low, High)[1], 
-						'Low_mean': Low.mean(), 
-						'High_mean': High.mean(), 
-						'LowToHighDelta': Low.mean() - High.mean()}))
-
-
-def GetDeltaPSIForEachGene():
-    '''
-    Performs a t-test for each intron retention event in TCGA between low and high mutational load tumors,
-    removes intron retention events with missing calls and returns a table of average PSI changes for each gene,
-    including if the change is significant.
-    '''
-    Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE')
-    Samples['Barcode'] = Samples['Barcode'].str[0:12].str.replace('-','_')
-    LowAndHigh = Samples[Samples['MutLoad'] < 10]['Barcode'].tolist() + Samples[Samples['MutLoad'] > 1000]['Barcode'].tolist()
-    AS = GetAlternativeSplicingData(AS='RI', BarcodesOfInt=LowAndHigh)
-    # Remove AS events if more than 25% of samples have a missing call
-    PercentMissing = AS.isnull().sum(axis=1).reset_index()[0]/len(AS.columns)
-    AS = AS.reset_index().assign(pct_missing = PercentMissing)
-    AS = AS[AS['pct_missing'] < 0.25]
-    # Get significantly different genes
-    df = AS.apply(DoTTestForAS, axis=1).assign(GeneName=AS['symbol'])
+    if DataType == 'Expression':
+        df = GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=True)
+    elif DataType == 'shRNA':
+        df = GetshRNARegression(DoModelDiagnostics=True)
+    elif DataType == 'Drug':
+        df = GetPerDrugRegression(DoModelDiagnostics=True)
     return(df)
+    df.to_csv(OutDir + Dataset + DataType + MutType + 'ModelDiagnosticResidualVsFittedVals')
+ 
 
 
 
-def GetNumberGenesFilteredDueToPotentialEQTLs():
-    '''
-    Uses output from @GetExpLevelsForASEvents() to examine how many AS events are removed in
-    both count categories (i.e., events splcied in/events not spliced in).
-    '''
-    ASDir='/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
-    Filt = pd.read_csv(ASDir +'TCGA_AS_EventsRemovedRI_Counts_ThresholdByPSI_0.8')
-    Filt['Filtered'] = 1
-    NotFilt= pd.read_csv(ASDir + 'TCGA_AS_EventsNOTRemovedRI_Counts_ThresholdByPSI_0.8')
-    NotFilt['NotFiltered'] = 1
-    FilteredStats = Filt.groupby(['Group'])['Filtered'].size().reset_index().merge(
-        NotFilt.groupby(['Group'])['NotFiltered'].size().reset_index(),
-        left_on=['Group'], right_on=['Group'])
-    return(FilteredStats)
-
-
-
-
-###########################################################
-### Expression regression used for Fig. 2 TCGA and CCLE ###
-###########################################################
-
-
-# DoRegressionByAge()
-# # GetNumberOfMutsAndCancerType(Dataset='TCGA')
-
-# GetPerDrugRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/DrugOLSRegressionEstimatesKsKaCCLE')
-
-# GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa').to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
-
-# GetCRISPRRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/CCLE_CRISPR_NormalizedByGene')
-
-
-# GetshRNARegression().to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/shRNA_GLMM_KsKa_CCLE')
-
-
-# GetPerDrugRegression().to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE'
-# # )
-
-# GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa', DoModelDiagnostics=False, ShuffleTMB=True).to_csv(
-#    '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityShuffledLoad' 
-# )
-
-################
-### Jacknife ###
-################
-
-# JacknifeAcrossCancerTypes('CCLE', DataType='RNAi', MutType='KsKa')
-
-# JacknifeAcrossCancerTypes('CCLE', DataType='Drug', MutType='KsKa')
-
-# JacknifeAcrossCancerTypes('TCGA', DataType='Expression', MutType='KsKa')
-
-# JacknifeAcrossCancerTypes('TCGA', 'Expression', 'ACC')
+JacknifeAcrossCancerTypes('CCLE', DataType='Expression', MutType='KsKa')

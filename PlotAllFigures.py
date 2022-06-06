@@ -1,35 +1,29 @@
+'''
+This script runs all of the analyses and plots all of the figures in the manuscript.
+'''
+
 import pandas as pd
 import os
 import numpy as np
 from pandas.core.frame import DataFrame
 from CalculateMetrics import *
+from Splicing import *
+from GetAnnotations import *
 
 
-
-def GetGeneAnnotationsOfInterest():
-    corum = corum = pd.read_csv('/labs/ccurtis2/tilk/02_DNDS/separateDatabaseFiles/CORUM/coreComplexes.txt.zip', sep='\t')
-    chap = pd.read_csv('/labs/ccurtis2/tilk/09_PROTEIN/Human_Chaperome_TableS1A_PMID_29293508', sep='\t')
-    groups = pd.concat([
-        pd.DataFrame({'Group': 'Cytoplasmic Ribosomes','subgroup' : 'Ribosomes', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, cytoplasmic')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
-        pd.DataFrame({'Group': 'Mitochondrial Ribosomes', 'subgroup' : 'Ribosomes', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, mitochondrial')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
-        pd.DataFrame({'Group': '20S Core' , 'subgroup' : 'Proteasome', 'Hugo' : corum[corum['ComplexName'] == '20S proteasome']['subunits(Gene name)'].str.split(';', expand=True).melt()['value']  }),
-        pd.DataFrame({'Group': '19S Regulatory Particle' , 'subgroup' : 'Proteasome', 'Hugo' : ['PSMC1','PSMC2','PSMC3','PSMC4','PSMC5','PSMC6', 'PSMD1','PSMD2','PSMD3','PSMD4','PSMD6','PSMD7','PSMD8','PSMD11','PSMD12','PSMD13','PSMD14'] }),
-        pd.DataFrame({'Group': 'Mitochondrial Chaperones' , 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'MITO') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'ER Chaperones' , 'subgroup' : 'Chaperones','Hugo' : chap[(chap['Level2'] == 'ER') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'Small HS' , 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'sHSP') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 100' ,'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'HSP100') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 90', 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'HSP90') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 70','subgroup' : 'Chaperones', 'Hugo' : chap[(chap['Level2'] == 'HSP70') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 60','subgroup' : 'Chaperones', 'Hugo' : chap[(chap['Level2'] == 'HSP60') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 40', 'subgroup' : 'Chaperones','Hugo' : chap[(chap['Level2'] == 'HSP40') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']})])
-    return(groups)
-
-
-def GetFigureInput(FigureNum):
-    SetUpPlottingPackages()
+def GetFigureInput(FigureName):
+    '''
+    Outputs a dataframe in R of all of the raw data used for plotting each supplemental and main figure in the manuscript.
+    Figures are all plotted using @GetFigure. Commented out functions 
+    Parameters:
+        @FigureName = a unique string identifier for each figure
+    '''
     rstats = importr('stats')
+    Complexes = GetGeneAnnotationsOfInterest()
     InputDir = '/labs/ccurtis2/tilk/scripts/protein/Data/'
-    if FigureNum == 'GlobalGSE_TCGA_Regression': # fig1B and 1C
+    if FigureName == 'GlobalGSE_TCGA_Regression': # Data for Fig 1B and 1C
+        #GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa').to_csv(
+        #   InputDir + 'ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
         df = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
         df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
         df = df[df['Coefficient'] == 'LogScore']
@@ -38,21 +32,12 @@ def GetFigureInput(FigureNum):
         GeneSet = df[(df['Estimate'] > 0) & (df['Adj.Pval'] < 0.05)]['GeneName']
         gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment( ConvertPandasDFtoR(GeneSet)))
         return(ConvertPandasDFtoR(gse[['term_name','source','p_value']]))
-    elif FigureNum == 'Groups_CCLEAndTCGA':
-        tcga = pd.read_csv(InputDir + 'Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Dataset='TCGA')
-        ccle = pd.read_csv(InputDir + 'Regression/ERChapAdded/ExpressionOLSRegressionEstimatesKsKaCCLE').assign(Dataset='CCLE')
-        all = pd.concat([tcga[['Pr...t..','Estimate','GeneName','Unnamed: 0','Dataset']], 
-                         ccle[['Pr...t..','Estimate','GeneName','Unnamed: 0','Dataset']]]).rename(columns={'Pr...t..':'pval'})
-        all['Coefficient'] = all['Unnamed: 0'].str.replace('\d+', '')
-        all = all[all['Coefficient'] == 'LogScore']
-        quantile = all.groupby(['Dataset'])['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'level_1':'Group'}).assign(
-            subgroup='Quantile').assign(pval = 0).assign(GeneName='')
-        groups = GetGeneAnnotationsOfInterest()
-        all = all.merge(groups, left_on='GeneName', right_on='Hugo')
-        all = pd.concat([all[['Dataset','Group','Estimate','subgroup','pval','GeneName']], quantile])
-        return(ConvertPandasDFtoR(all.astype(str))) 
-    elif FigureNum == 'AS_Delta_PSI': # Fig 2
-        SetUpPlottingPackages()
+    elif FigureName == 'AS_PSI': # Data for 2A
+        # GetExpLevelsForASEvents(ASType='RI', PSI_Threshold=0.8, FilterForeQTLS=True)
+        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8')
+        df['Filtered'] = 'Filtered'
+        return(ConvertPandasDFtoR(df))
+    elif FigureName == 'AS_Delta_PSI': # Data for 2B
         df = GetDeltaPSIForEachGene()
         df['Adj.Pval'] = rstats.p_adjust(FloatVector(df['pVal']), method = 'fdr')
         NegGenes = df[(df['Adj.Pval'] < 0.05) & (df['LowToHighDelta'] < -0.01)]['GeneName'].drop_duplicates()
@@ -64,31 +49,36 @@ def GetFigureInput(FigureNum):
         out = out[out['source'].isin(['CORUM','REAC'])].set_index(['term_name']).groupby(
             ['Group','source'])['p_value'].nsmallest(10).reset_index()
         return(ConvertPandasDFtoR(out))
-    elif FigureNum == 'JacknifeExpCCLE':
-        Complexes = GetGeneAnnotationsOfInterest()
+    elif FigureName == 'Groups_CCLEAndTCGA': # Data for Fig 3
+        #GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa').to_csv(
+        #   InputDir + 'ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
+        tcga = pd.read_csv(InputDir + 'Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Dataset='TCGA')
+        #GetExpressionRegression(Dataset='CCLE', DataType='Expression', MutType='KsKa').to_csv(
+        #   InputDir + 'ExpressionOLSRegressionEstimatesKsKaCCLE')
+        ccle = pd.read_csv(InputDir + 'Regression/ERChapAdded/ExpressionOLSRegressionEstimatesKsKaCCLE').assign(Dataset='CCLE')
+        all = pd.concat([tcga[['Pr...t..','Estimate','GeneName','Unnamed: 0','Dataset']], 
+                         ccle[['Pr...t..','Estimate','GeneName','Unnamed: 0','Dataset']]]).rename(columns={'Pr...t..':'pval'})
+        all['Coefficient'] = all['Unnamed: 0'].str.replace('\d+', '')
+        all = all[all['Coefficient'] == 'LogScore']
+        quantile = all.groupby(['Dataset'])['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'level_1':'Group'}).assign(
+            subgroup='Quantile').assign(pval = 0).assign(GeneName='')
+        groups = GetGeneAnnotationsOfInterest()
+        all = all.merge(groups, left_on='GeneName', right_on='Hugo')
+        all = pd.concat([all[['Dataset','Group','Estimate','subgroup','pval','GeneName']], quantile])
+        return(ConvertPandasDFtoR(all.astype(str))) 
+    elif FigureName == 'JacknifeshRNACCLE': # Data for Fig 4A
+        # JacknifeAcrossCancerTypes('CCLE', DataType='RNAi', MutType='KsKa')
         Out = pd.DataFrame()
-        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLEExpressionKsKa*'))
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLERNAi*'))
         for FileName in ListOfCancerTypes:
             df = pd.read_csv(FileName)
-            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
             df = df[df['Coefficient'] == 'LogScore'] 
-            df = df.merge(Complexes, right_on='Hugo', left_on='GeneName')
-            print(df)
-            Out = Out.append(df)
+            Out = Out.append(df.drop(columns={'Unnamed: 0'}))
+        df = GetshRNARegression().assign(CancerTypeRemoved='All Cancers')
+        Out = Out[['Estimate','Pr...t..','Group','subgroup','CancerTypeRemoved']].append(df[['Estimate','Pr...t..','Group','subgroup','CancerTypeRemoved']])
         return(ConvertPandasDFtoR(Out))
-    elif FigureNum == 'JacknifeExpTCGA':
-        Complexes = GetGeneAnnotationsOfInterest()
-        Out = pd.DataFrame()
-        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/TCGAExpression*'))
-        for FileName in ListOfCancerTypes:
-            df = pd.read_csv(FileName)
-            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
-            df = df[df['Coefficient'] == 'LogScore'] 
-            df = df.merge(Complexes, right_on='Hugo', left_on='GeneName')
-            print(df)
-            Out = Out.append(df)
-        return(ConvertPandasDFtoR(Out))
-    elif FigureNum == 'JacknifeDrugsCCLE': #fig 3
+    elif FigureName == 'JacknifeDrugsCCLE': # Data for Fig 4B
+        # JacknifeAcrossCancerTypes('CCLE', DataType='Drug', MutType='KsKa')
         DrugsOfInterest = GetDrugResponseData(Screen='primary', AllDrugs=False)[['name','Group','subgroup']].drop_duplicates()
         Out = pd.DataFrame()
         ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLEDrug*'))
@@ -100,22 +90,12 @@ def GetFigureInput(FigureNum):
         df = df[df['Coefficient'] == 'LogScore'] 
         Out = Out.append(df)
         return(ConvertPandasDFtoR(Out))
-    elif FigureNum == 'JacknifeshRNACCLE':
-        Complexes = GetGeneAnnotationsOfInterest()
-        Out = pd.DataFrame()
-        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLERNAi*'))
-        for FileName in ListOfCancerTypes:
-            df = pd.read_csv(FileName)
-            df = df[df['Coefficient'] == 'LogScore'] 
-            Out = Out.append(df.drop(columns={'Unnamed: 0'}))
-        df = GetshRNARegression().assign(CancerTypeRemoved='All Cancers')
-        Out = Out[['Estimate','Pr...t..','Group','subgroup','CancerTypeRemoved']].append(df[['Estimate','Pr...t..','Group','subgroup','CancerTypeRemoved']])
-        return(ConvertPandasDFtoR(Out))
-    elif FigureNum == 'AllDrugsByLoad':
+    elif FigureName == 'AllDrugsByLoad': # Data for Fig 5A
+        # GetPerDrugRegression()
         df = pd.read_csv(os.getcwd() + '/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE')
         df = df[df['Coefficient'] == 'LogScore'] 
         return(ConvertPandasDFtoR(df))
-    elif FigureNum == 'Multicollinearity':
+    elif FigureName == 'Multicollinearity': # Data for Sup. Fig 1
         ccle_muts = AnnotateMutationalLoad(GetPointMutations('CCLE'), 'SNV').rename(columns={'MutLoad':'SNV'}).merge(
                     AnnotateMutationalLoad(GetPointMutations('CCLE'), 'KsKa').rename(columns={'MutLoad':'Protein-Coding'}),
                     left_on='Barcode',right_on='Barcode',how='outer').merge(AnnotateMutationalLoad(GetPointMutations('CCLE'), 'Synonymous'),
@@ -141,102 +121,81 @@ def GetFigureInput(FigureNum):
                     left_on='Barcode',right_on='Barcode',how='outer').rename(columns={'MutLoad':'CNV'})
         tcga_merged = tcga_muts.merge(tcga_cnvs, left_on='Barcode',right_on='Barcode',how='outer').dropna()  
         return(ConvertPandasDFtoR(pd.concat([tcga_merged.assign(Dataset='TCGA'), ccle_merged.assign(Dataset='CCLE')])))
-    elif FigureNum == 'TMB_Shuffling':
-        shuffled = pd.read_csv(os.getcwd() + '/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurityShuffledLoad').assign(Group='Shuffled')
-        true = pd.read_csv(os.getcwd() + '/Data/Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Group='True')
-        combined = pd.concat([shuffled,true])
-        combined['Coefficient'] = combined['Unnamed: 0'].str.replace('\d+', '')
-        combined = combined[combined['Coefficient'] == 'LogScore']
-        return(ConvertPandasDFtoR(combined))
-    elif FigureNum == 'CorrelationWithAge':
-        #exp = pd.read_csv(InputDir + 'Regression/TCGA_GLMM_ByAgeGroupsBinnedEqually')
-        exp = pd.read_csv(InputDir + 'Regression/TCGA_GLMM_ByAgeGroups')
-        exp['Coefficient'] = exp['Unnamed: 0'].str.replace('\d+', '')
-        exp = exp[exp['Coefficient'] == 'LogScore']
-        Complexes = GetGeneAnnotationsOfInterest()
-        exp = exp.merge(GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
-        return(ConvertPandasDFtoR(exp.dropna())) 
-    elif FigureNum == 'CCLE_RNAi_All':
-        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/AchillesOnlyRNAiOLSRegressionEstimatesNoNormKsKaCCLE')
-        #df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/RNAiOLSRegressionEstimatesKsKaCCLE')
-        df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
-        df = df[df['Coefficient'] == 'LogScore']
-        Complexes = GetGeneAnnotationsOfInterest()
-        df = df.merge(GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
-        quantile = df['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'index':'Group'}).assign(
-            subgroup='Quantile').assign(pVal = 0).assign(GeneName='')
-        all = pd.concat([df[['Group','Estimate','subgroup','pVal','GeneName']].dropna(), quantile])
-        return(ConvertPandasDFtoR(all.astype(str))) 
-    elif FigureNum == 'NumASEventsFiltered':  # supplemental figure X
+    elif FigureName == 'NumASEventsFiltered':  # Data for Sup. Fig 2A
         filtered = GetNumberGenesFilteredDueToPotentialEQTLs()
         return(ConvertPandasDFtoR(filtered))
-    elif FigureNum == 'AS_PSI_FilteredCounts': #supplemental figure X
+    elif FigureName == 'AS_PSI_FilteredCounts': # Data for Sup. Fig 2B
+        # GetExpLevelsForASEvents(ASType='RI', PSI_Threshold=0.8, FilterForeQTLS=False)
         df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8FiltereQTLS_False')
         df['Filtered'] = 'NotFiltered'
         return(ConvertPandasDFtoR(df))
-    elif FigureNum == 'AS_PSI': #Fig2A
-        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8')
-        df['Filtered'] = 'Filtered'
-        return(ConvertPandasDFtoR(df))
+    elif FigureName == 'JacknifeExpTCGA': # Data for Sup. Fig 4
+        # JacknifeAcrossCancerTypes('TCGA', DataType='Expression', MutType='KsKa')
+        Out = pd.DataFrame()
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/TCGAExpression*'))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName)
+            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+            df = df[df['Coefficient'] == 'LogScore'] 
+            df = df.merge(Complexes, right_on='Hugo', left_on='GeneName')
+            Out = Out.append(df)
+        return(ConvertPandasDFtoR(Out))
+    elif FigureName == 'CorrelationWithAge': # Data for Sup. Fig 5
+        # DoRegressionByAge()
+        exp = pd.read_csv(InputDir + 'Regression/TCGA_GLMM_ByAgeGroups')
+        exp['Coefficient'] = exp['Unnamed: 0'].str.replace('\d+', '')
+        exp = exp[exp['Coefficient'] == 'LogScore']
+        exp = exp.merge(GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
+        return(ConvertPandasDFtoR(exp.dropna())) 
+    elif FigureName == 'JacknifeExpCCLE': # Data for Sup. Fig 6
+        # JacknifeAcrossCancerTypes('CCLE', DataType='Expression', MutType='KsKa')
+        Out = pd.DataFrame()
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLEExpressionKsKa*'))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName)
+            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+            df = df[df['Coefficient'] == 'LogScore'] 
+            df = df.merge(Complexes, right_on='Hugo', left_on='GeneName')
+            Out = Out.append(df)
+        return(ConvertPandasDFtoR(Out))
 
-
-
+    
 def GetFigure(Figure):
-    if Figure == 'Groups_CCLEAndTCGA': # Fig 3A
-        all = GetFigureInput('Groups_CCLEAndTCGA')
-        SetUpPlottingPackages(); ro.r.PlotRegCoefPerGroup(all)
-    elif Figure == 'AS_Delta_PSI': # Fig 2b
-        out = GetFigureInput('AS_Delta_PSI')
-        SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
-    elif Figure == 'AS_PSI': #Fig 2A
+    SetUpPlottingPackages()
+    if Figure == 'GlobalGSE_TCGA_Regression':  # Fig 1B
+        ro.r.PlotCircularCORUMTCGA(GetFigureInput('GlobalGSE_TCGA_Regression'))
+    elif Figure == 'GlobalGSE_TCGA_Regression_KEGG': # Fig 1C
+        ro.r.PlotCircularKeggTCGA(GetFigureInput('GlobalGSE_TCGA_Regression'))
+    elif Figure == 'AS_PSI': # Fig 2A
         # Raw data generated from fxn in GetExpLevelsForASEvents(ASType, PSI_Threshold) in Splicing.py
-        df = GetFigureInput('AS_PSI')
-        SetUpPlottingPackages(); ro.r.VisualizeAS(df, Filtered='True')
-    elif Figure == 'AS_PSI_NotFiltered':
-        df = GetFigureInput('AS_PSI_NotFiltered')
-        SetUpPlottingPackages(); ro.r.VisualizeAS(df, Filtered='False')
-    elif Figure == 'GlobalGSE_TCGA_Regression':  #fig 1B
-        foo = GetFigureInput('GlobalGSE_TCGA_Regression')
-        SetUpPlottingPackages(); ro.r.PlotCircularCORUMTCGA(foo)
-    elif Figure == 'GlobalGSE_TCGA_Regression_KEGG': #fig 1C
-        foo = GetFigureInput('GlobalGSE_TCGA_Regression')
-        SetUpPlottingPackages(); ro.r.PlotCircularKeggTCGA(foo)
-    elif Figure == 'JacknifeExpCCLE': # supplemental figure x
-        df = GetFigureInput('JacknifeExpCCLE')
-        SetUpPlottingPackages(); ro.r.PlotJacknifedExpressionAcrossGroups(df, 'CCLE')
-    elif Figure == 'JacknifeExpTCGA':  # supplemental figure x
-        df = GetFigureInput('JacknifeExpTCGA')
-        SetUpPlottingPackages(); ro.r.PlotJacknifedExpressionAcrossGroups(df,'TCGA')
-    elif Figure == 'JacknifeDrugsCCLE': # fig 4b
-        df = GetFigureInput('JacknifeDrugsCCLE')
-        SetUpPlottingPackages(); ro.r.PlotJacknifedDrugsAcrossGroups(df)
-    elif Figure == 'JacknifeshRNACCLE': # fig 4a
-        df = GetFigureInput('JacknifeshRNACCLE')
-        SetUpPlottingPackages(); ro.r.PlotJacknifedshRNAAcrossGroups(df)
-    elif Figure == 'AllDrugsByLoad': # fig5a
-        df = GetFigureInput('AllDrugsByLoad')
-        SetUpPlottingPackages(); ro.r.PlotFractionOfSigDrugsForAll(df)
-        #SetUpPlottingPackages(); ro.r.PlotRegressionForAllDrugs(df)
-    elif Figure == 'BootstrappedDrugs': # fig5b
-        SetUpPlottingPackages(); ro.r.PlotBootstrappedNegativelyAssociatedDrugs()
-    elif Figure == 'Multicollinearity': # supplemental figure x
-        df = GetFigureInput('Multicollinearity')
-        SetUpPlottingPackages(); ro.r.PlotMultiCollinearityOfSNVsAndCNVs(df)
-    elif Figure == 'PSI_Supplemental':
-        ro.r.VisualizeAllASThresholds() # supplemental figX A
-        ro.r.VisualizeAllAS() # supplemental figX B
-    elif Figure == 'TMB_Shuffling': #supplemental new? (TBD)
-        df = GetFigureInput('TMB_Shuffling')
-        SetUpPlottingPackages(); ro.r.PlotShuffledAndEmpiricalTMB(df)
-    elif Figure == 'CorrelationWithAge':
-        df = GetFigureInput('CorrelationWithAge')
-        SetUpPlottingPackages(); ro.r.PlotGLMMRegressionCoefficientsByAge(df)
-    elif Figure == 'CCLE_RNAi_All':
-        df = GetFigureInput('CCLE_RNAi_All')
-        SetUpPlottingPackages(); ro.r.PlotshRNAAll(df)
-    elif Figure == 'AS_PSI_NotFiltered':  # Supplemental figure XB
-        df = GetFigureInput('AS_PSI_NotFiltered')
-        SetUpPlottingPackages(); ro.r.VisualizeAS(df)
-    elif Figure == 'NumASEventsFiltered': # Supplemental figure XA
-        df = GetFigureInput('NumASEventsFiltered')
-        SetUpPlottingPackages(); ro.r.PlotNumASEventsFiltered(df)
+        ro.r.VisualizeAS(GetFigureInput('AS_PSI'))
+    elif Figure == 'AS_Delta_PSI': # Fig 2B
+        ro.r.PlotDeltaPSI(GetFigureInput('AS_Delta_PSI'))
+    elif Figure == 'Groups_CCLEAndTCGA': # Fig 3
+        ro.r.PlotRegCoefPerGroup(GetFigureInput('Groups_CCLEAndTCGA'))
+    elif Figure == 'JacknifeshRNACCLE': # Fig 4A
+        ro.r.PlotJacknifedshRNAAcrossGroups(GetFigureInput('JacknifeshRNACCLE'))
+    elif Figure == 'JacknifeDrugsCCLE': # fig 4B
+        ro.r.PlotJacknifedDrugsAcrossGroups(GetFigureInput('JacknifeDrugsCCLE'))
+    elif Figure == 'AllDrugsByLoad': # Fig 5A
+        ro.r.PlotFractionOfSigDrugsForAll(GetFigureInput('AllDrugsByLoad'))
+    elif Figure == 'BootstrappedDrugs': # Fig 5B
+        ro.r.PlotBootstrappedNegativelyAssociatedDrugs()
+    elif Figure == 'Multicollinearity': # Sup Fig 1
+        ro.r.PlotMultiCollinearityOfSNVsAndCNVs(GetFigureInput('Multicollinearity'))
+    elif Figure == 'NumASEventsFiltered': # Sup Fig 2A
+        ro.r.PlotNumASEventsFiltered(GetFigureInput('NumASEventsFiltered'))
+    elif Figure == 'AS_PSI_NotFiltered':  # Sup Fig 2B
+        ro.r.VisualizeAS(GetFigureInput('AS_PSI_NotFiltered'))
+    elif Figure == 'AS_PSI': # Sup Fig 2C
+        ro.r.VisualizeAS(GetFigureInput('AS_PSI'))
+    elif Figure == 'PSI_Supplemental': # Sup Fig 3
+        ro.r.VisualizeAllASThresholds() # 3A
+        ro.r.VisualizeAllAS() # 3B
+    elif Figure == 'JacknifeExpTCGA':  # Sup Fig 4
+        ro.r.PlotJacknifedExpressionAcrossGroups(GetFigureInput('JacknifeExpTCGA'),'TCGA')
+    elif Figure == 'CorrelationWithAge': # Sup Fig 5
+        ro.r.PlotGLMMRegressionCoefficientsByAge(GetFigureInput('CorrelationWithAge'))
+    elif Figure == 'JacknifeExpCCLE': # Sup Fig 6
+        ro.r.PlotJacknifedExpressionAcrossGroups(GetFigureInput('JacknifeExpCCLE'), 'CCLE')
+    

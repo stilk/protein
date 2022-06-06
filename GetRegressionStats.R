@@ -8,15 +8,23 @@ library(dplyr)
 
 
 NormalizeValues = function(df) {
-    # Z scores expression values in the independent variable so that they're normally distributed
+    # Z scores expression values in the independent variable so that they're normally distributed.
+    # Adds column 'NormalizedValue' to dataframe from input column 'Value'
+    # Parameters:
+    #   @df = dataframe of inputs for normalization. 
     df$NormalizedValue = (df$Value - mean(df$Value))/sd(df$Value) 
 	return(df)
 } 
 
 
 DoMixedEffectRegression = function(df, NormalizeY, DoModelDiagnostics=FALSE) { # Used for expression (TCGA)
-    # Does mixed effect regression of Values by LogScore (i.e. mutational load) while
-    # controlling for cancer type and tumor purity. 
+    # Does mixed effect regression of Values by LogScore (i.e. mutational load) while controlling for cancer type and
+    # tumor purity. Outputs a dataframe of regression results. 
+    # Parameters:
+    #   @df = dataframe of raw inputs used for regression. Should have columns for the dependent variables named
+    #       'purity','type', and 'LogScore'. Independent variable column is named 'Value'.
+    #   @NormalizeY = boolean of whether to normalize y values using @NormalizeValues
+    #   @DoModelDiagnostics = boolean of whether to output results from @DoModelDiagnostics instead
     if (NormalizeY) {
          model = lmer(NormalizedValue ~ LogScore + (1 | type) + purity , data=df)
     } else {
@@ -31,6 +39,12 @@ DoMixedEffectRegression = function(df, NormalizeY, DoModelDiagnostics=FALSE) { #
 
 
 DoOLSRegressionWithGeneName = function(df, NormalizeY, DoModelDiagnostics=FALSE) { # Used for shRNA
+    # Does OLS regression of 'Value' by 'LogScore' and 'GeneName'. Outputs a dataframe of regression results.
+    # Parameters:
+    #   @df = dataframe of raw inputs used for regression. Should have columns for the dependent variables named
+    #       'GeneName', and 'LogScore'. Independent variable column is named 'Value'.
+    #   @NormalizeY = boolean of whether to normalize y values using @NormalizeValues
+    #   @DoModelDiagnostics = boolean of whether to output results from @DoModelDiagnostics instead
     if (NormalizeY) {
         if(!("NormalizedValue" %in% names(df))) { # If normalized values don't exist in dataframe, normalize vals
            df = data.frame(df %>% group_by(GeneName) %>% do(data.frame(NormalizeValues(.))))    
@@ -49,6 +63,12 @@ DoOLSRegressionWithGeneName = function(df, NormalizeY, DoModelDiagnostics=FALSE)
 }
 
 DoLinearRegression = function(df, NormalizeY, DoModelDiagnostics=FALSE) { # Used for drug and exp(CCLE)
+    # Does OLS regression of Values by LogScore (i.e. mutational load) and outputs a dataframe of regression results. 
+    # Parameters:
+    #   @df = dataframe of raw inputs used for regression. Should have column for the dependent variable named 'LogScore'. 
+    #       Independent variable column is named 'Value'.
+    #   @NormalizeY = boolean of whether to normalize y values using @NormalizeValues
+    #   @DoModelDiagnostics = boolean of whether to output results from @DoModelDiagnostics instead
     if (NormalizeY) {
         if(!("NormalizedValue" %in% names(df))) { # If normalized values don't exist in dataframe, normalize vals
            df = NormalizeValues(df)
@@ -69,6 +89,13 @@ DoLinearRegression = function(df, NormalizeY, DoModelDiagnostics=FALSE) { # Used
 
 
 DoRegressionPerGene = function(df, RegressionType, NormalizeY, DoModelDiagnostics=FALSE) {
+    # Takes a dataframe of values (e.g., expression/shRNA/drug) and mutational load for each tumor/cell line and 
+    # runs @DoLinearRegression of @DoMixedEffectsRegression by each gene in the dataframe.
+    # Parameters:
+    #   @df = dataframe of raw inputs used for regression
+    #   @RegressionType = a string of which regression model to use 'MixedEffect' or 'OLS'
+    #   @NormalizeY = boolean of whether to normalize y values using @NormalizeValues
+    #   @DoModelDiagnostics = boolean of whether to output results from @DoModelDiagnostics instead
     RegressionResults = data.frame()
     AllGenes = unique(df$GeneName)
     for (i in 1:length(AllGenes)) {

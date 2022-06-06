@@ -1,6 +1,5 @@
 '''
-This script aggregates alternative splicing calls for all genes and patients, compares the expression levels
-of the same genes by cancer subtype and outputs total counts of under and over expressed transcripts paer patient.
+This script performs all alternative splicing analysis used in the manuscript. 
 '''
 
 from GetData import *
@@ -38,7 +37,7 @@ def GetAlternativeSplicingData(AS='RI', BarcodesOfInt=[]):
 
 def GetAvgTranscriptLevelsForAS():
     '''
-    Outputs a table for each patient whether the expression of each gene is under-expressed or over-expressed relative to 
+    Outputs a dataframe for each patient whether the expression of each gene is under-expressed or over-expressed relative to 
     that patient's cancer subtype. Genes are counted as ender or over-expressed if they are 1 STD from the mean.
     Output of table is used in @GetExpLevelsForASEvents.
     '''
@@ -51,7 +50,7 @@ def GetAvgTranscriptLevelsForAS():
     Exp['DepletedTranscript'] = (Exp['DeviationFromMean'] < 0) & (Exp['DeviationFromMean'].abs() > Exp['std'])
     Exp['OverExpressedTranscript'] = (Exp['DeviationFromMean'] > 0) & (Exp['DeviationFromMean'].abs() > Exp['std'])
     Exp.to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/' + Dataset + '_AvgGeneExpForAllCancerTypes')
-    
+    return(Exp)
 
 
 def GetExpLevelsForASEvents(ASType, PSI_Threshold, FilterForeQTLS=True):
@@ -92,19 +91,59 @@ def GetExpLevelsForASEvents(ASType, PSI_Threshold, FilterForeQTLS=True):
 
 
 
+def GetDeltaPSIForEachGene():
+    '''
+    Performs a t-test for each intron retention event in TCGA between low and high mutational load tumors,
+    removes intron retention events with missing calls and returns a table of average PSI changes for each gene,
+    including if the change is significant.
+    '''
+    Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE')
+    Samples['Barcode'] = Samples['Barcode'].str[0:12].str.replace('-','_')
+    LowAndHigh = Samples[Samples['MutLoad'] < 10]['Barcode'].tolist() + Samples[Samples['MutLoad'] > 1000]['Barcode'].tolist()
+    AS = GetAlternativeSplicingData(AS='RI', BarcodesOfInt=LowAndHigh)
+    # Remove AS events if more than 25% of samples have a missing call
+    PercentMissing = AS.isnull().sum(axis=1).reset_index()[0]/len(AS.columns)
+    AS = AS.reset_index().assign(pct_missing = PercentMissing)
+    AS = AS[AS['pct_missing'] < 0.25]
+    # Get significantly different genes
+    df = AS.apply(DoTTestForAS, axis=1).assign(GeneName=AS['symbol'])
+    return(df)
+
+
+def DoTTestForAS(row):
+    '''
+    For each AS event, performs a two-sided t-test for the null hypothesis that the two groups 
+    (low and high mutational load tumors) have the same expected average PSI values. 
+    Outputs a Pandas Series of p-values for how different the two groups are and the average 
+    change in PSI values between the two groups for each gene.
+    Parameters 
+    @row = a series of PSI values for each patient from @GetDeltaPSIForEachGene 
+    '''
+    Samples = pd.read_csv(os.getcwd() + '/Data/Raw/Mutations/TCGA/CancerTypesAndMutLoadForDGE')
+    Samples['Barcode'] = Samples['Barcode'].str[0:12].str.replace('-','_')
+    Low = row[list(set(row.index) & set(Samples[Samples['MutLoad'] < 10]['Barcode'].tolist()))].dropna()
+    High = row[list(set(row.index) & set(Samples[Samples['MutLoad'] > 1000]['Barcode'].tolist()))].dropna()
+    return( pd.Series({'pVal': stats.ttest_ind(Low, High)[1], 
+						'Low_mean': Low.mean(), 
+						'High_mean': High.mean(), 
+						'LowToHighDelta': Low.mean() - High.mean()}))
+
+
+def GetNumberGenesFilteredDueToPotentialEQTLs():
+    '''
+    Uses output from @GetExpLevelsForASEvents() to examine how many AS events are removed in
+    both count categories (i.e., events splcied in/events not spliced in).
+    '''
+    ASDir='/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
+    Filt = pd.read_csv(ASDir +'TCGA_AS_EventsRemovedRI_Counts_ThresholdByPSI_0.8')
+    Filt['Filtered'] = 1
+    NotFilt= pd.read_csv(ASDir + 'TCGA_AS_EventsNOTRemovedRI_Counts_ThresholdByPSI_0.8')
+    NotFilt['NotFiltered'] = 1
+    FilteredStats = Filt.groupby(['Group'])['Filtered'].size().reset_index().merge(
+        NotFilt.groupby(['Group'])['NotFiltered'].size().reset_index(),
+        left_on=['Group'], right_on=['Group'])
+    return(FilteredStats)
+
+
+
     
-
-# # # # ###############
-
-# thresh= 0.8
-
-
-# GetExpLevelsForASEvents(ASType='RI', PSI_Threshold=thresh)
-# GetExpLevelsForASEvents(ASType='ES', PSI_Threshold=thresh)
-# GetExpLevelsForASEvents(ASType='AD', PSI_Threshold=thresh)
-# GetExpLevelsForASEvents(ASType='AP', PSI_Threshold=thresh)
-# GetExpLevelsForASEvents(ASType='AT', PSI_Threshold=thresh)
-# GetExpLevelsForASEvents(ASType='AA', PSI_Threshold=thresh)
-# GetExpLevelsForASEvents(ASType='ME', PSI_Threshold=thresh)
-
-# GetExpLevelsForASEvents(ASType='RI', PSI_Threshold=thresh, FilterForeQTLS=False) # used in supplemental X
