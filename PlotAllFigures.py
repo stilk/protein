@@ -2,40 +2,8 @@ import pandas as pd
 import os
 import numpy as np
 from pandas.core.frame import DataFrame
-import rpy2.robjects as ro 
-from rpy2.robjects.packages import importr
-from rpy2.robjects import pandas2ri
-from rpy2.robjects.conversion import localconverter
-from rpy2.robjects.vectors import FloatVector
 from CalculateMetrics import *
 
-
-def SetUpPlottingPackages():
-    ggplot = importr('ggplot2')
-    #scales = importr('scales')
-    #ggpmisc = importr('ggpmisc')
-    cowplot = importr('cowplot')
-    lme4 = importr('lme4')
-    glmnet = importr('glmnet')
-    lmertest = importr('lmerTest')
-    data_table = importr('data.table')
-    dplyr = importr('dplyr')
-    gprofiler = importr('gprofiler2')
-    ro.r.source('/labs/ccurtis2/tilk/scripts/protein/Plotting.R') # Source R script for plotting
-    ro.r.source('/labs/ccurtis2/tilk/scripts/protein/DoGeneSetEnrichment.R') # Source gse script
-
-
-
-def ConvertPandasDFtoR(df):
-    with localconverter(ro.default_converter + pandas2ri.converter): 
-        dfInR = ro.conversion.py2rpy(df) # Convert pandas dataframe to R 
-    return(dfInR)
-
-
-def ConvertRDataframetoPandas(df):
-    with localconverter(ro.default_converter + pandas2ri.converter):
-        dfInPd = ro.conversion.rpy2py(df) # Convert R dataframe back to Pandas
-    return(dfInPd)
 
 
 def GetGeneAnnotationsOfInterest():
@@ -97,7 +65,7 @@ def GetFigureInput(FigureNum):
             ['Group','source'])['p_value'].nsmallest(10).reset_index()
         return(ConvertPandasDFtoR(out))
     elif FigureNum == 'JacknifeExpCCLE':
-        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
+        Complexes = GetGeneAnnotationsOfInterest()
         Out = pd.DataFrame()
         ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLEExpressionKsKa*'))
         for FileName in ListOfCancerTypes:
@@ -109,7 +77,7 @@ def GetFigureInput(FigureNum):
             Out = Out.append(df)
         return(ConvertPandasDFtoR(Out))
     elif FigureNum == 'JacknifeExpTCGA':
-        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
+        Complexes = GetGeneAnnotationsOfInterest()
         Out = pd.DataFrame()
         ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/TCGAExpression*'))
         for FileName in ListOfCancerTypes:
@@ -133,7 +101,7 @@ def GetFigureInput(FigureNum):
         Out = Out.append(df)
         return(ConvertPandasDFtoR(Out))
     elif FigureNum == 'JacknifeshRNACCLE':
-        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
+        Complexes = GetGeneAnnotationsOfInterest()
         Out = pd.DataFrame()
         ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Jacknife/CCLERNAi*'))
         for FileName in ListOfCancerTypes:
@@ -141,7 +109,7 @@ def GetFigureInput(FigureNum):
             df = df[df['Coefficient'] == 'LogScore'] 
             Out = Out.append(df.drop(columns={'Unnamed: 0'}))
         df = GetshRNARegression().assign(CancerTypeRemoved='All Cancers')
-        Out = Out[['Estimate','Pr...t..','Group','CancerTypeRemoved']].append(df[['Estimate','Pr...t..','Group','CancerTypeRemoved']])
+        Out = Out[['Estimate','Pr...t..','Group','subgroup','CancerTypeRemoved']].append(df[['Estimate','Pr...t..','Group','subgroup','CancerTypeRemoved']])
         return(ConvertPandasDFtoR(Out))
     elif FigureNum == 'AllDrugsByLoad':
         df = pd.read_csv(os.getcwd() + '/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE')
@@ -185,16 +153,16 @@ def GetFigureInput(FigureNum):
         exp = pd.read_csv(InputDir + 'Regression/TCGA_GLMM_ByAgeGroups')
         exp['Coefficient'] = exp['Unnamed: 0'].str.replace('\d+', '')
         exp = exp[exp['Coefficient'] == 'LogScore']
-        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
-        exp = exp.merge(GetSubsetOfGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
+        Complexes = GetGeneAnnotationsOfInterest()
+        exp = exp.merge(GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
         return(ConvertPandasDFtoR(exp.dropna())) 
     elif FigureNum == 'CCLE_RNAi_All':
         df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/AchillesOnlyRNAiOLSRegressionEstimatesNoNormKsKaCCLE')
         #df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/RNAiOLSRegressionEstimatesKsKaCCLE')
         df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
         df = df[df['Coefficient'] == 'LogScore']
-        Complexes = GetSubsetOfGeneAnnotationsOfInterest()
-        df = df.merge(GetSubsetOfGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
+        Complexes = GetGeneAnnotationsOfInterest()
+        df = df.merge(GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')
         quantile = df['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'index':'Group'}).assign(
             subgroup='Quantile').assign(pVal = 0).assign(GeneName='')
         all = pd.concat([df[['Group','Estimate','subgroup','pVal','GeneName']].dropna(), quantile])
@@ -202,11 +170,13 @@ def GetFigureInput(FigureNum):
     elif FigureNum == 'NumASEventsFiltered':  # supplemental figure X
         filtered = GetNumberGenesFilteredDueToPotentialEQTLs()
         return(ConvertPandasDFtoR(filtered))
-    elif FigureNum == 'AS_PSI_NotFiltered': #supplemental figure X
+    elif FigureNum == 'AS_PSI_FilteredCounts': #supplemental figure X
         df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8FiltereQTLS_False')
+        df['Filtered'] = 'NotFiltered'
         return(ConvertPandasDFtoR(df))
     elif FigureNum == 'AS_PSI': #Fig2A
         df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8')
+        df['Filtered'] = 'Filtered'
         return(ConvertPandasDFtoR(df))
 
 
@@ -218,7 +188,7 @@ def GetFigure(Figure):
     elif Figure == 'AS_Delta_PSI': # Fig 2b
         out = GetFigureInput('AS_Delta_PSI')
         SetUpPlottingPackages(); ro.r.PlotDeltaPSI(out)
-    elif Figure == 'AS_PSI': #Fig 21
+    elif Figure == 'AS_PSI': #Fig 2A
         # Raw data generated from fxn in GetExpLevelsForASEvents(ASType, PSI_Threshold) in Splicing.py
         df = GetFigureInput('AS_PSI')
         SetUpPlottingPackages(); ro.r.VisualizeAS(df, Filtered='True')
@@ -264,6 +234,9 @@ def GetFigure(Figure):
     elif Figure == 'CCLE_RNAi_All':
         df = GetFigureInput('CCLE_RNAi_All')
         SetUpPlottingPackages(); ro.r.PlotshRNAAll(df)
-    elif Figure == 'ASEventsFiltered':
-        df = GetFigureInput('ASEventsFiltered')
-        SetUpPlottingPackages(); ro.r.PlotASFiltering(df)
+    elif Figure == 'AS_PSI_NotFiltered':  # Supplemental figure XB
+        df = GetFigureInput('AS_PSI_NotFiltered')
+        SetUpPlottingPackages(); ro.r.VisualizeAS(df)
+    elif Figure == 'NumASEventsFiltered': # Supplemental figure XA
+        df = GetFigureInput('NumASEventsFiltered')
+        SetUpPlottingPackages(); ro.r.PlotNumASEventsFiltered(df)
