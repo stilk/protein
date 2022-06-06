@@ -1,3 +1,5 @@
+# This script runs all of the GLMs and GLMMs used in the manuscript.
+# This output of this R code is imported into Python for downstream analysis in CalculateMetrics.py
 
 library(lme4)
 library(glmnet)
@@ -6,7 +8,7 @@ library(dplyr)
 
 
 NormalizeValues = function(df) {
-    # Z scores expression values of each gene so that they're normally distributed
+    # Z scores expression values in the independent variable so that they're normally distributed
     df$NormalizedValue = (df$Value - mean(df$Value))/sd(df$Value) 
 	return(df)
 } 
@@ -90,7 +92,11 @@ DoRegressionPerGene = function(df, RegressionType, NormalizeY, DoModelDiagnostic
 
 
 DoModelDiagnostics = function(df, model) {
-    # Compares fitted values vs residuals in model to assess heteroscedasticity
+    # Compares fitted values vs residuals in a given regression model to assess heteroscedasticity.
+    # Compares residuals in the entire model overall, and residuls against all explanatory variables.
+    # Parameters:
+    #   @df = dataframe of regression model inputs used (e.g., expression values/load/purity/type for each tumor)
+    #   @model = raw regression model output that contains residuals
     Diagnostics = data.frame() # Empty df where results are appended
     df = na.omit(df) # Make sure no NAs exist, which are already omitted during regression 
     Diagnostics = rbind(Diagnostics, data.frame('PearsonsR' = cor(fitted(model),resid(model), method=c("pearson")),
