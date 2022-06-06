@@ -196,7 +196,3 @@ def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', OutDir=os.g
     return(df)
     df.to_csv(OutDir + Dataset + DataType + MutType + 'ModelDiagnosticResidualVsFittedVals')
  
-
-
-
-JacknifeAcrossCancerTypes('CCLE', DataType='Expression', MutType='KsKa')
