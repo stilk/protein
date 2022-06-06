@@ -1,4 +1,6 @@
-PlotDir='/labs/ccurtis2/tilk/scripts/protein/Figures/'
+# This script plots all of the figures in the manuscript using ggplot
+
+lotDir='/labs/ccurtis2/tilk/scripts/protein/Figures/'
 source(paste0(getwd(), '/DrugAnnotationMOA.R'))
 library(scales)
 library(cowplot)
