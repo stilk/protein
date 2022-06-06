@@ -1,27 +1,24 @@
 
-## Expression ##
-TCGA: RNA-seq data was downloaded from XENA database of un-normalized raw expression data ##
-CCLE: RNA-seq data was downloaded from DepMap (oct 4 2021) Version 21Q3
+## Paper ##
+
+> Paper link on bioarxiv will go here
 
 
-## Drug ##
-CCLE: Drug was downloaded from DepMap (oct 4 2021) version 19Q4
+## Dependencies ##
 
-## Genetic Dependency ##
-CCLE: RNAi knockdown Demeter V6 was downloaded, which combines 3 datasets (Achilles + DRIVE + Marcotte + DEMETER2).
-    Cancer cell line genetic dependencies estimated using the DEMETER2 model. 
-    DEMETER2 is applied to three large-scale RNAi screening datasets: the Broad Institute Project Achilles,
-    Novartis Project DRIVE, and the Marcotte et al. breast cell line dataset. 
+All dependencies required to run the code can be found in Environment directory. Create the virtual environment and load it using [conda](https://docs.conda.io/en/latest/). Note this only applies for Python packages, packages in R will have to be downloaded separately. 
 
-## Mutations ##
-CCLE: Mutation calls were downloaded from DepMap (Oct 4 2021) Version 21Q3
+```
+conda create -f /Environment/environment.yaml
+source activate protein
+```
 
-## Clinical ##
-    MMRF-Commpass RNA-seq and Exome sequencing data was collected from the GDC on 10/14/2021
-    https://portal.gdc.cancer.gov/projects/MMRF-COMMPASS
-    https://gdc.cancer.gov/about-gdc/contributed-genomic-data-cancer-research/foundation-medicine/multiple-myeloma-research-foundation-mmrf
-    	
-## Stability ##
+## Analysis ##
 
-Mutfunc was used to match mutation calls to protein stability from here:
-http://ftp.ebi.ac.uk/pub/databases/mutfunc/mutfunc_v2/human/
+All scripts used to run the analysis, which is written in Python and R, is under the `Analysis` directory. The rpy2 Python package is used to import R code into Python and can be found under `GetRCodeIntoPython.py`. Code in R is used for visualization and statistical analysis. All of the statistical analysis (gene set enrichment and regression modeling) is aggregated using `CalculateMetrics.py` and the R code imported can be found under `GetRegressionStats.R`. Input data and plotting of all figures can be used reproduce all of the analysis in `PlotAllFigures.py`, which uses visualization done in ggplot within `Plotting.R`.
+
+All of the raw data imported and used for this analysis can be found under `GetData.py`. (Note that all of this data is already publicly available and links to get access to the data are provided in the manuscript.) All of the alternative splicing analysis used to examine gene silencing in high mutational load tumors can be found under `Splicing.py`. 
+
+## Annotations ##
+
+Proteostasis gene sets and CORUM complexes datatbases used are provided in the `GeneSets` directory. Other gene and drug category annotations used can be found under `GetAnnotations.py` and `DrugAnnotationMoa.R`, respectively. 
