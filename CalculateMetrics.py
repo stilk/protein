@@ -4,36 +4,9 @@ import os
 import numpy as np
 from pandas.core.frame import DataFrame
 import os.path
-import rpy2.robjects as ro 
-from rpy2.robjects.packages import importr
-from rpy2.robjects import pandas2ri
-from rpy2.robjects.conversion import localconverter
+from GetRCodeIntoPython import *
 from GetData import * 
 from Splicing import * 
-
-def SetUpRegressionPackages():
-    ggplot = importr('ggplot2')
-    #scales = importr('scales')
-    #ggpmisc = importr('ggpmisc')
-    #cowplot = importr('cowplot')
-    lme4 = importr('lme4')
-    glmnet = importr('glmnet')
-    lmertest = importr('lmerTest')
-    data_table = importr('data.table')
-    dplyr = importr('dplyr')
-    ro.r.source('/labs/ccurtis2/tilk/scripts/protein/GetRegressionStats.R') # Source R script for plotting
-
-
-def ConvertPandasDFtoR(df):
-    with localconverter(ro.default_converter + pandas2ri.converter): 
-        dfInR = ro.conversion.py2rpy(df) # Convert pandas dataframe to R 
-    return(dfInR)
-
-
-def ConvertRDataframetoPandas(df):
-    with localconverter(ro.default_converter + pandas2ri.converter):
-        dfInPd = ro.conversion.rpy2py(df) # Convert R dataframe back to Pandas
-    return(dfInPd)
 
 
 def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
@@ -92,10 +65,8 @@ def DoRegressionByAge(DataType='Expression', MutType='KsKa', OutDir=os.getcwd() 
     Output = pd.DataFrame() # Where results are appended to
     SetUpRegressionPackages()
     df = GetRegressionStatsInput('TCGA', DataType, MutType)
-    df = df.merge( GetSubsetOfGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo')
+    df = df.merge( GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo')
     df['AgeBin'] = pd.cut(df['age'], [9,30,40,50,60,70,80,90], labels=['10-30','30-40','40-50','50-60','60-70','70-80','80-90'])
-    #df['AgeBin'] = pd.cut(df['age'], 5, precision=0) # cut by equally sized bins and don't cut by decimals, round to nearest digit
-    #df['AgeBin'] = df['AgeBin'].astype(str).str.replace(', ', '-').str.replace('(','').str.replace(']','') # clean up label names
     for AgeGroup in df['AgeBin'].unique():
         AgeSubset = df[df['AgeBin'] == AgeGroup]
         RegResult = ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(ConvertPandasDFtoR(AgeSubset), 'MixedEffect', True, False))
@@ -156,30 +127,11 @@ def JacknifeAcrossCancerTypes(Dataset, DataType, CancerTypeToRemove='', MutType=
             break
         
 
-def GetSubsetOfGeneAnnotationsOfInterest():
-    corum = corum = pd.read_csv('/labs/ccurtis2/tilk/02_DNDS/separateDatabaseFiles/CORUM/coreComplexes.txt.zip', sep='\t')
-    chap = pd.read_csv('/labs/ccurtis2/tilk/09_PROTEIN/Human_Chaperome_TableS1A_PMID_29293508', sep='\t')
-    groups = pd.concat([
-        pd.DataFrame({'Group': 'Cytoplasmic Ribosomes','subgroup' : 'Translation', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, cytoplasmic')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
-        pd.DataFrame({'Group': 'Mitochondrial Ribosomes', 'subgroup' : 'Translation', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, mitochondrial')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
-        pd.DataFrame({'Group': 'Mitochondrial Chaperones' , 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'MITO') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'ER Chaperones' , 'subgroup' : 'Chaperones','Hugo' : chap[(chap['Level2'] == 'ER') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': '20S Core' , 'subgroup' : 'Proteasome', 'Hugo' : corum[corum['ComplexName'] == '20S proteasome']['subunits(Gene name)'].str.split(';', expand=True).melt()['value']  }),
-        pd.DataFrame({'Group': '19S Regulatory Particle' , 'subgroup' : 'Proteasome', 'Hugo' : ['PSMC1','PSMC2','PSMC3','PSMC4','PSMC5','PSMC6', 'PSMD1','PSMD2','PSMD3','PSMD4','PSMD6','PSMD7','PSMD8','PSMD11','PSMD12','PSMD13','PSMD14'] }),
-        pd.DataFrame({'Group': 'Small HS' , 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'sHSP') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 100' ,'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'HSP100') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 90', 'subgroup' : 'Chaperones', 'Hugo' :chap[(chap['Level2'] == 'HSP90') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 70','subgroup' : 'Chaperones', 'Hugo' : chap[(chap['Level2'] == 'HSP70') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 60','subgroup' : 'Chaperones', 'Hugo' : chap[(chap['Level2'] == 'HSP60') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']}),
-        pd.DataFrame({'Group': 'HSP 40', 'subgroup' : 'Chaperones','Hugo' : chap[(chap['Level2'] == 'HSP40') & (chap['CHAP / CO-CHAP'] == 'CHAP') ]['Gene']})])
-    return(groups)
-
-
 
 def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa'), DoModelDiagnostics=False):
     ''' Grouped regression '''
     SetUpRegressionPackages()
-    groups = GetSubsetOfGeneAnnotationsOfInterest()
+    groups = GetGeneAnnotationsOfInterest()
     df = df.merge(groups, left_on='GeneName', right_on='Hugo')
     Out = pd.DataFrame()
     for Group in groups['Group'].unique():
@@ -187,6 +139,7 @@ def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RN
         #Reg= ConvertRDataframetoPandas(ro.r.DoLinearRegression(SingleGroup, NormalizeY=True)).reset_index()
         Reg = ConvertRDataframetoPandas(ro.r.DoOLSRegressionWithGeneName(SingleGroup, False, DoModelDiagnostics)).reset_index()
         Reg['Group'] = Group
+        Reg['subgroup'] = groups[groups['Group'] == Group]['subgroup'].unique()[0]
         Out = Out.append(Reg)
     Out = Out.dropna().rename(columns={'index':'Coefficient'})
     if not DoModelDiagnostics:
@@ -248,14 +201,18 @@ def GetDeltaPSIForEachGene():
 
 
 def GetNumberGenesFilteredDueToPotentialEQTLs():
+    '''
+    Uses output from @GetExpLevelsForASEvents() to examine how many AS events are removed in
+    both count categories (i.e., events splcied in/events not spliced in).
+    '''
     ASDir='/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
     Filt = pd.read_csv(ASDir +'TCGA_AS_EventsRemovedRI_Counts_ThresholdByPSI_0.8')
     Filt['Filtered'] = 1
     NotFilt= pd.read_csv(ASDir + 'TCGA_AS_EventsNOTRemovedRI_Counts_ThresholdByPSI_0.8')
     NotFilt['NotFiltered'] = 1
-    FilteredStats = Filt.groupby(['GeneName','as_id'])['Filtered'].size().reset_index().merge(
-        NotFilt.groupby(['GeneName','as_id'])['NotFiltered'].size().reset_index(),
-        left_on=['GeneName','as_id'], right_on=['GeneName','as_id'])
+    FilteredStats = Filt.groupby(['Group'])['Filtered'].size().reset_index().merge(
+        NotFilt.groupby(['Group'])['NotFiltered'].size().reset_index(),
+        left_on=['Group'], right_on=['Group'])
     return(FilteredStats)
 
 
