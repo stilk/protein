@@ -8,10 +8,9 @@ from GetData import *
 def GetAlternativeSplicingData(AS='RI', BarcodesOfInt=[]):
 	'''
 	Aggregates raw PSI counts for each gene and patient from TCGASpliceSeq by alternative splicing event.
-	Parameters:
-	@AS = a string for which alternative splicing event to look at (e.g. 'RI' for intron retention)
-	@BarcodesOfInt = a vector of barcodes to only aggregate AS events for. Used in the delta PSI comparison
-	between low and high mutational load tumors.
+	Args:   @AS = a string for which alternative splicing event to look at (e.g. 'RI' for intron retention)
+	        @BarcodesOfInt = a vector of barcodes to only aggregate AS events for. Used in the delta PSI comparison
+	            between low and high mutational load tumors.
 	'''
 	DataDir = '/labs/ccurtis2/tilk/09_PROTEIN/splicingAnalysis/spliceSeq/newDownload/'
 	ListOfFiles = glob.glob(os.path.join(DataDir, "PSI_download_*zip"))
