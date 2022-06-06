@@ -108,14 +108,14 @@ def GetPointMutations(Dataset, DataDir = os.getcwd() + '/Data/Raw/Mutations/'):
 	Args: 	@Dataset = a string of which dataset to read values from ('CCLE', or 'TCGA')
 			@DataDir = string of the input directory of where the data is 
 	'''
-    if 'TCGA' in Dataset:
-        muts = pd.read_csv(DataDir + Dataset + "/mc3.v0.2.8.PUBLIC.maf.gz", sep='\t', 
+	if 'TCGA' in Dataset:
+		muts = pd.read_csv(DataDir + Dataset + "/mc3.v0.2.8.PUBLIC.maf.gz", sep='\t', 
 			usecols = ['Variant_Classification','Tumor_Sample_Barcode','Hugo_Symbol']).rename(columns={'Tumor_Sample_Barcode': 'Barcode'})
-        muts['Barcode'] = muts['Barcode'].str[0:15]
-    elif 'CCLE' in Dataset:
-        muts = pd.read_csv(DataDir + Dataset +  "/CCLE_mutations.csv", sep=',', 
+		muts['Barcode'] = muts['Barcode'].str[0:15]
+	elif 'CCLE' in Dataset:
+		muts = pd.read_csv(DataDir + Dataset +  "/CCLE_mutations.csv", sep=',', 
 		usecols = ['DepMap_ID','Variant_Classification','Hugo_Symbol']).rename(columns={'DepMap_ID': 'Barcode'})
-    return(muts)
+	return(muts)
 
 
 def GetCopyNumberMutations(Dataset, DataDir = os.getcwd() + '/Data/Raw/Mutations/'):
@@ -199,3 +199,16 @@ def GetTissueType(Dataset, DataDir = os.getcwd() + '/Data/Raw/Mutations/' ):
 		muts = pd.read_csv(DataDir +  Dataset + '/sample_info.csv', sep=',', usecols=[ 'disease', 'DepMap_ID']).rename(
 			columns={'DepMap_ID': 'Barcode','disease':'type'})
 	return(muts)
+
+
+
+def GetTopMutationalLoadTumors(TopPercentThreshold = 0.1, PerCancerType=True):
+	df = AnnotateMutationalLoad(GetPointMutations('TCGA'), 'KsKa').merge(GetTissueType('TCGA'), left_on='Barcode', right_on='Barcode')
+	if PerCancerType:
+		topload = df.groupby('type').apply(lambda x: x.nlargest(int(len(x) * TopPercentThreshold), 'MutLoad')).reset_index(drop=True)
+		percent = topload.groupby('type')['MutLoad'].min().reset_index().assign(MutationLoadPercentile = str(int((TopPercentThreshold * 100))) + '%')
+	else: # Top load by all cancer types
+		topload = df['MutLoad'].nlargest(int(len(df) * TopPercentThreshold)).reset_index().drop(columns='index')
+		percent = pd.DataFrame({'MutLoad':topload['MutLoad'].min()}, index=[0]).assign(
+			MutationLoadPercentile = str(int((TopPercentThreshold * 100))) + '%').assign(type='All Cancer Types')
+	return(percent.rename(columns={'type':'Cancer Type','MutLoad':'Minimum Threshold of Mutations', 'MutationLoadPercentile': 'Mutation Load Percentile'}))
