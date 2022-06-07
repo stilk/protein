@@ -1,6 +1,6 @@
 # This script plots all of the figures in the manuscript using ggplot
 
-lotDir='/labs/ccurtis2/tilk/scripts/protein/Figures/'
+PlotDir=paste0(getwd(),'/Figures/')
 source(paste0(getwd(), '/DrugAnnotationMOA.R'))
 library(scales)
 library(cowplot)
@@ -25,7 +25,7 @@ BootAS = function(df, NumBoot=100) {
 }
 
 VisualizeAllAS = function(Threshold='0.8') {
-    Dir = '/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
+    Dir =paste0(getwd(), '/Data/AS_Tables/')
     AS_Types = c('RI','ES','AD','AP','AT','AA','ME')
     Combined = data.frame()
     df = data.frame()
@@ -53,7 +53,7 @@ VisualizeAllAS = function(Threshold='0.8') {
 
 
 VisualizeAllASThresholds = function(AS_Type='RI') { 
-    Dir = '/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/'
+    Dir = paste0(getwd(), '/Data/AS_Tables/')
     Thresholds = c('0.5','0.6','0.7','0.8','0.9')
     Combined = data.frame()
     for (T in Thresholds) {

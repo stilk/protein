@@ -20,7 +20,7 @@ def GetFigureInput(FigureName):
     '''
     rstats = importr('stats')
     Complexes = GetGeneAnnotationsOfInterest()
-    InputDir = '/labs/ccurtis2/tilk/scripts/protein/Data/'
+    InputDir = os.getcwd() + '/Data/'
     if FigureName == 'GlobalGSE_TCGA_Regression': # Data for Fig 1B and 1C
         #GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa').to_csv(
         #   InputDir + 'ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
@@ -34,7 +34,7 @@ def GetFigureInput(FigureName):
         return(ConvertPandasDFtoR(gse[['term_name','source','p_value']]))
     elif FigureName == 'AS_PSI': # Data for 2A
         # GetExpLevelsForASEvents(ASType='RI', PSI_Threshold=0.8, FilterForeQTLS=True)
-        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8')
+        df = pd.read_csv(InputDir + '/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8')
         df['Filtered'] = 'Filtered'
         return(ConvertPandasDFtoR(df))
     elif FigureName == 'AS_Delta_PSI': # Data for 2B
@@ -126,7 +126,7 @@ def GetFigureInput(FigureName):
         return(ConvertPandasDFtoR(filtered))
     elif FigureName == 'AS_PSI_FilteredCounts': # Data for Sup. Fig 2B
         # GetExpLevelsForASEvents(ASType='RI', PSI_Threshold=0.8, FilterForeQTLS=False)
-        df = pd.read_csv('/labs/ccurtis2/tilk/scripts/protein/Data/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8FiltereQTLS_False')
+        df = pd.read_csv(InputDir + '/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8FiltereQTLS_False')
         df['Filtered'] = 'NotFiltered'
         return(ConvertPandasDFtoR(df))
     elif FigureName == 'JacknifeExpTCGA': # Data for Sup. Fig 4
@@ -142,7 +142,7 @@ def GetFigureInput(FigureName):
         return(ConvertPandasDFtoR(Out))
     elif FigureName == 'CorrelationWithAge': # Data for Sup. Fig 5
         # DoRegressionByAge()
-        exp = pd.read_csv(InputDir + 'Regression/TCGA_GLMM_ByAgeGroups')
+        exp = pd.read_csv(InputDir + '/Regression/TCGA_GLMM_ByAgeGroups')
         exp['Coefficient'] = exp['Unnamed: 0'].str.replace('\d+', '')
         exp = exp[exp['Coefficient'] == 'LogScore']
         exp = exp.merge(GetGeneAnnotationsOfInterest(), left_on='GeneName', right_on='Hugo', how='left')

@@ -16,7 +16,7 @@ def SetUpRegressionPackages():
     lmertest = importr('lmerTest')
     data_table = importr('data.table')
     dplyr = importr('dplyr')
-    ro.r.source(os.getcwd() + '/GetRegressionStats.R') # Source R functions for running regression models
+    ro.r.source(os.getcwd() + '/Analysis/GetRegressionStats.R') # Source R functions for running regression models
 
 def SetUpPlottingPackages():
     ggplot = importr('ggplot2')
@@ -27,8 +27,8 @@ def SetUpPlottingPackages():
     data_table = importr('data.table')
     dplyr = importr('dplyr')
     gprofiler = importr('gprofiler2')
-    ro.r.source(os.getcwd() + '/Plotting.R') # Source R script for plotting
-    ro.r.source(os.getcwd() + '/DoGeneSetEnrichment.R') # Source R script for plotting
+    ro.r.source(os.getcwd() + '/Analysis/Plotting.R') # Source R script for plotting
+    ro.r.source(os.getcwd() + '/Analysis/DoGeneSetEnrichment.R') # Source R script for plotting
 
 
 def ConvertPandasDFtoR(df):
