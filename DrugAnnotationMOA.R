@@ -2,7 +2,7 @@
 # This function outputs a dataframe all of the drugs in CCLE negatively associated with mutational load into large broad categories.
 
 GetAnnotatedMOA = function() {
-    AllDrugs = read.table(os.getcwd() + '/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE', sep=',', header=T, fill=T)
+    AllDrugs = read.table(paste0(getwd(), '/Data/Regression/AllDrugsOLSRegressionEstimatesKsKaCCLE'), sep=',', header=T, fill=T)
     AllDrugs = subset(AllDrugs, AllDrugs$Coefficient == 'LogScore')
     AllDrugs = subset(AllDrugs, AllDrugs$Estimate < 0)
     # Replace specific drugs with moa categories into more specific groups

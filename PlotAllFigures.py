@@ -14,15 +14,13 @@ from GetAnnotations import *
 def GetFigureInput(FigureName):
     '''
     Outputs a dataframe in R of all of the raw data used for plotting each supplemental and main figure in the manuscript.
-    Figures are all plotted using @GetFigure. Commented out functions are used to generate results
-    (and typically take a while to run).
+    Figures are all plotted using @GetFigure. Commented out functions 
     Parameters:
         @FigureName = a unique string identifier for each figure
     '''
     rstats = importr('stats')
     Complexes = GetGeneAnnotationsOfInterest()
     InputDir = os.getcwd() + '/Data/'
-    SetUpRegressionPackages()
     if FigureName == 'GlobalGSE_TCGA_Regression': # Data for Fig 1B and 1C
         #GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa').to_csv(
         #   InputDir + 'ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
