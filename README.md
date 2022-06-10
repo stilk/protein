@@ -1,8 +1,7 @@
 
 ## Paper ##
 
-> Paper link on bioarxiv will go here
-
+> Tilk, S., Frydman, J., Curtis, C., & Petrov, D. Cancers adapt to their mutational load by buffering protein misfolding stress. https://www.biorxiv.org/content/10.1101/2022.06.08.495407v1
 
 ## Dependencies ##
 
