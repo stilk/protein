@@ -101,6 +101,21 @@ def GetRNAiResponseData(GeneSet = [], DataDir = os.getcwd() + "/Data/Raw/Drug/")
 
 
 
+def GetProteinExpressionData(Dataset, GeneSet=[]):
+	if Dataset == 'CCLE':
+		protein = pd.read_csv('/labs/ccurtis2/tilk/07_PRISM/00_RawData/Protein/protein_quant_current_normalized.csv.gz', sep=',')
+		protein = protein.drop(['Protein_Id','Description','Group_ID','Uniprot','Uniprot_Acc'], axis=1).set_index('Gene_Symbol').transpose().unstack().reset_index().rename(columns={'level_1':'Protein_Id',0:'ProteinQuant'})
+		protein[['Protein_Id','Replicate']] = protein.Protein_Id.str.rsplit('_', 1, expand=True) ### split into replicates and IDs
+		protein = protein[protein['Replicate'] != 'Peptides'] ### remove weird samples for now 
+		info = pd.read_csv('/labs/ccurtis2/tilk/07_PRISM/00_RawData/SNV/sample_info.csv', sep=',')[['CCLE_Name','DepMap_ID']]
+		df = protein.merge(info, left_on='Protein_Id',right_on='CCLE_Name').dropna().rename(columns={'DepMap_ID':'Barcode','Gene_Symbol': 'GeneName','ProteinQuant':'Value'})
+		if len(GeneSet) != 0:
+				df = df[df['GeneName'].isin(GeneSet)]
+		return(df)
+
+
+
+
 def GetPointMutations(Dataset, DataDir = os.getcwd() + '/Data/Raw/Mutations/'):
 	'''
 	Returns type and gene name of each mutation in different datasets of a dataframe with 3 columns: 
