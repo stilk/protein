@@ -158,8 +158,52 @@ def GetFigureInput(FigureName):
             df = df.merge(Complexes, right_on='Hugo', left_on='GeneName')
             Out = Out.append(df)
         return(ConvertPandasDFtoR(Out))
+    elif FigureName == 'WithinCancer_TCGA' : # Rev Response #1 - Within cancer type GLMM box plot
+        #   GetWithinCancerType(Dataset='TCGA', DataType='Protein')
+        Out = pd.DataFrame()
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/WithinCancerType/TCGAExpressionKsKa*'))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName)
+            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+            df = df[df['Coefficient'] == 'LogScore'] 
+            df = df.merge(Complexes, right_on='Hugo', left_on='GeneName')
+            Out = Out.append(df)
+        return(ConvertPandasDFtoR(Out))
+    elif FigureName == 'WithinCancerGrouped_TCGA': # Rev Response #1 - Within cancer type GLMM heat map
+        Out = pd.DataFrame()
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/WithinCancerType/TCGAExpressionKsKaByComplexGroup*'))
+        NumSamples = GetTissueType('TCGA').groupby('type').size().reset_index()
+        Metadata = AnnotateMutationalLoad(GetPointMutations('TCGA'),'KsKa')
+        Metadata = Metadata.merge(GetTissueType('TCGA'), left_on='Barcode', right_on='Barcode').groupby('type')['MutLoad'].median().reset_index()
+        Metadata = Metadata.merge(GetTissueType('TCGA').groupby('type').size().reset_index().rename(columns={0:'NumSamples'}))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName)
+            df['type'] = FileName.split('/')[11].replace('TCGAExpressionKsKaByComplexGroupOLSRegressionWithinCancerType','')
+            df = df.merge(Metadata, left_on='type', right_on='type')
+            Out = Out.append(df)
+        return(ConvertPandasDFtoR(Out))
+    elif FigureName == 'TMB_Shuffling_BetaDist': # Rev Response #2 - TMB shuffle + visalize p val dist
+        shuff = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB').assign(Group='Null')
+        obs = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Group='Observed')
+        df = shuff.append(obs)
+        df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+        df = df[df['Coefficient'] == 'LogScore']
+        df['GeneName'] = df['GeneName'].str.split('_', expand=True)[0]
+        return(ConvertPandasDFtoR(df))
+        #df['Adj.Pval'] = rstats.p_adjust(FloatVector(df['Pr...t..']), method = 'fdr')
+        #GeneSet = df[(df['Estimate'] > 0) & (df['Adj.Pval'] < 0.05)]['GeneName']
+        #gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment( ConvertPandasDFtoR(GeneSet)))
+        #return(ConvertPandasDFtoR(gse[['term_name','source','p_value']]))
+    elif FigureName == 'TMB_Shuffling_SigGeneCount':
+        shuff = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB').assign(Group='Null')
+        obs = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Group='Observed')
+        df = shuff.append(obs)
+        df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+        df = df[df['Coefficient'] == 'LogScore']
+        df['GeneName'] = df['GeneName'].str.split('_', expand=True)[0]
+        return(ConvertPandasDFtoR(df))
 
-    
+
 def GetFigure(Figure):
     SetUpPlottingPackages()
     if Figure == 'GlobalGSE_TCGA_Regression':  # Fig 1B
@@ -198,4 +242,15 @@ def GetFigure(Figure):
         ro.r.PlotGLMMRegressionCoefficientsByAge(GetFigureInput('CorrelationWithAge'))
     elif Figure == 'JacknifeExpCCLE': # Sup Fig 6
         ro.r.PlotJacknifedExpressionAcrossGroups(GetFigureInput('JacknifeExpCCLE'), 'CCLE')
-    
+    elif Figure == 'RevResp_Within_TCGA_Exp': # Reviewer response - within cancer type
+        ro.r.PlotWithinCancerTypeExpressionAcrossGroups(GetFigureInput('WithinCancer_TCGA'),'TCGA')
+    elif Figure == 'RevResp_WithinCancerGrouped_TCGA': # Reviewer response - within cancer type
+        ro.r.PlotCancerTypeInComplexesAcrossGroups(GetFigureInput('WithinCancerGrouped_TCGA'))
+    elif Figure == 'RevResp_BetaDistAfterShuffle': # Reviewer response - p-val + beta dist in null and obs
+        ro.r.VisualizeBetaAfterShuffle(GetFigureInput('TMB_Shuffling_BetaDist'))
+    elif Figure == 'RevResp_AdjustedPValDist': # Reviewer response - adj and og pval dist
+        ro.r.ComparePValueDistributions(GetFigureInput('TMB_Shuffling_SigGeneCount'))  
+    elif Figure == 'RevResp_AdjustedPValGeneSetEnrichment': #Reviewer response - adj and g pval gse
+        ro.r.PlotAdjustedPValGeneSetEnrich(GetFigureInput('TMB_Shuffling_SigGeneCount'))
+
+        
