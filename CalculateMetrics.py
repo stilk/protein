@@ -50,7 +50,7 @@ def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
 
 
 
-def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=False):  
+def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoModelDiagnostics=False, ShuffleTMB=False):  
     '''
     Uses linear regression to measure the association of expression and mutational load. Input data for regressinon is 
     taken from @GetRegressionInput. Depending on the dataset, will use OLS or GLMM (mixed effect) regression.
@@ -63,6 +63,8 @@ def GetExpressionRegression(Dataset, DataType='Expression', MutType='KsKa', DoMo
     SetUpRegressionPackages()
     df = GetRegressionStatsInput(Dataset, DataType, MutType)
     R = ConvertPandasDFtoR(df)
+    if ShuffleTMB: # Used to compare distribution of null vs empirical p-values for empirical FDR in Fig.1?
+        df['LogScore'] = df.groupby(['type'])['LogScore'].transform(np.random.permutation) # shuffle
     if Dataset == 'CCLE':
         return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', True, DoModelDiagnostics)))
     elif Dataset == 'TCGA':
@@ -136,6 +138,50 @@ def GetPerDrugRegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='
     return(Out)
 
 
+def GetWithinCancerType(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/WithinCancerType/'):
+    ''' Need to add functionality for different DataTypes? '''
+    SetUpRegressionPackages()
+    AllCancerTypes = GetRegressionStatsInput(Dataset, DataType, MutType) # Get input data for 
+    for CancerType in AllCancerTypes['type'].unique(): 
+        Knifed = AllCancerTypes[AllCancerTypes['type'] == CancerType] # Remove cancer type from loop
+        R = ConvertPandasDFtoR(Knifed) # Convert df to R for regression
+        print('Analyzing cancer type... ' + str(CancerType))
+        if Dataset == 'CCLE':
+            OutFile = OutDir + Dataset + DataType + MutType + 'OLSRegressionWithinCancerType' + CancerType.replace(' ','_').replace('/','_') 
+            if os.path.isfile(OutFile): # If file already exists, skip
+                continue
+            if DataType == 'RNAi':
+                GetshRNARegression(Knifed).assign(CancerType = CancerType).to_csv(OutFile)
+            elif DataType == 'Drug': # Do grouped regression 
+                GetPerDrugRegression(Knifed).assign(CancerType = CancerType).to_csv(OutFile)
+            else: # Expression or protein, which we're performing per gene regression on
+                OneTypeKnifed = ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', True)).assign(
+                    CancerType = CancerType).to_csv(OutFile)
+        elif Dataset == 'TCGA':
+            OutFile = OutDir + Dataset + DataType + MutType + 'MixedEffectRegressionWithinCancerType' + CancerType
+            if os.path.isfile(OutFile): # If file already exists, skip
+                continue
+            OneTypeKnifed = ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'OLS', True)).assign(
+                CancerType = CancerType).to_csv(OutFile)
+
+
+def GetWithinCancerTypeGrouped(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/WithinCancerType/'):
+    ''' Adds a grouped gene name for OLS  '''
+    SetUpRegressionPackages()
+    AllCancerTypes = GetRegressionStatsInput(Dataset, DataType, MutType) # Get input data for 
+    for CancerType in AllCancerTypes['type'].unique(): 
+        Knifed = AllCancerTypes[AllCancerTypes['type'] == CancerType] 
+        R = ConvertPandasDFtoR(Knifed) # Convert df to R for regression
+        print('Analyzing cancer type... ' + str(CancerType)) 
+        OutFile = OutDir + Dataset + DataType + MutType + 'ByComplexGroupOLSRegressionWithinCancerType' + CancerType.replace(' ','_').replace('/','_') 
+        if Dataset == 'CCLE':
+             OutFile = OutFile.replace(' ','_').replace('/','_')
+        #elif os.path.isfile(OutFile): # If file already exists, skip
+        #    continue
+        GetshRNARegression(Knifed, False).to_csv(OutFile) # currently as shrna reg but should work for group exp
+    print('Done!')
+
+
 
 def JacknifeAcrossCancerTypes(Dataset, DataType, CancerTypeToRemove='', MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Jacknife/'):
     ''' 
@@ -196,3 +242,15 @@ def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', OutDir=os.g
     return(df)
     df.to_csv(OutDir + Dataset + DataType + MutType + 'ModelDiagnosticResidualVsFittedVals')
  
+
+# ran within cancer type expression
+# run jacknife protein
+
+# GetWithinCancerType(Dataset='CCLE', DataType='Protein')
+GetWithinCancerTypeGrouped('TCGA','Expression')
+  
+# JacknifeAcrossCancerTypes('CCLE', 'Protein')
+
+# GetExpressionRegression('TCGA', DataType='Expression', MutType='KsKa', DoModelDiagnostics=False, ShuffleTMB=True).to_csv(
+#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB'
+# )
