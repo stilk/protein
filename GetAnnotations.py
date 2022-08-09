@@ -4,9 +4,10 @@ drug annotations used to group drugs into broad functional categories.
 '''
 
 import pandas as pd
+import os
 
 def GetGeneAnnotationsOfInterest():
-    corum = corum = pd.read_csv(os.getcwd() + '/GeneSets/coreComplexes.txt.zip', sep='\t')
+    corum = pd.read_csv(os.getcwd() + '/GeneSets/coreComplexes.txt.zip', sep='\t')
     chap = pd.read_csv(os.getcwd() + '/GeneSets/Human_Chaperome_TableS1A_PMID_29293508', sep='\t')
     groups = pd.concat([
         pd.DataFrame({'Group': 'Cytoplasmic Ribosomes','subgroup' : 'Ribosomes', 'Hugo' : corum[corum['ComplexName'].str.contains('subunit, cytoplasmic')]['subunits(Gene name)'].str.split(';', expand=True).melt()['value'].drop_duplicates().tolist()}),
