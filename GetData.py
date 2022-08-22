@@ -109,9 +109,31 @@ def GetProteinExpressionData(Dataset, GeneSet=[]):
 		protein = protein[protein['Replicate'] != 'Peptides'] ### remove weird samples for now 
 		info = pd.read_csv('/labs/ccurtis2/tilk/07_PRISM/00_RawData/SNV/sample_info.csv', sep=',')[['CCLE_Name','DepMap_ID']]
 		df = protein.merge(info, left_on='Protein_Id',right_on='CCLE_Name').dropna().rename(columns={'DepMap_ID':'Barcode','Gene_Symbol': 'GeneName','ProteinQuant':'Value'})
+		Out = df.groupby(['GeneName','Barcode'])['Value'].median().reset_index()
 		if len(GeneSet) != 0:
-				df = df[df['GeneName'].isin(GeneSet)]
-		return(df)
+				Out = Out[Out['GeneName'].isin(GeneSet)]
+	elif Dataset == 'TCGA': 
+		Out = pd.DataFrame()
+		ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Raw/Protein/TCGA/*tsv'))
+		for FileName in ListOfCancerTypes:
+			print(FileName)
+			df = pd.read_csv(FileName, sep='\t').dropna()
+			df = df.melt(id_vars= ['Gene','NCBIGeneID', 'Authority', 'Description', 'Organism', 'Chromosome', 'Locus'])
+			# Choose shared samples (which I think is less strict in how to define whether a peptide matches a protein)?
+			df = df[~df['variable'].str.contains('Unshared')] # remove un-shared proteins
+			df['variable'] = 'TCGA-' + df['variable'].str.replace(' Log Ratio','').str[0:10]
+			df = df[['Gene','variable','value']].rename(columns={'Gene':'GeneName','variable':'Barcode','value':'Value'}).dropna()
+			Out = Out.append(df)
+	elif Dataset == 'CPTAC':
+		Out = pd.DataFrame()
+		ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Raw/Protein/CPTAC/*/data_protein_quantification.txt'))
+		for FileName in ListOfCancerTypes:
+			df = pd.read_csv(FileName, sep='\t').dropna()
+			df = df.melt(id_vars= ['Composite.Element.REF'])
+			df['Composite.Element.REF']=df['Composite.Element.REF'].str.split('|', expand=True)[0]
+			df = df.rename(columns={'Composite.Element.REF':'GeneName','variable':'Barcode','value':'Value'}).dropna()
+			Out = Out.append(df)
+			return(Out)
 
 
 
@@ -130,6 +152,13 @@ def GetPointMutations(Dataset, DataDir = os.getcwd() + '/Data/Raw/Mutations/'):
 	elif 'CCLE' in Dataset:
 		muts = pd.read_csv(DataDir + Dataset +  "/CCLE_mutations.csv", sep=',', 
 		usecols = ['DepMap_ID','Variant_Classification','Hugo_Symbol']).rename(columns={'DepMap_ID': 'Barcode'})
+	elif 'CPTAC' in Dataset:
+		muts = pd.DataFrame()
+		ListOfCancerTypes = glob.glob(os.path.join(DataDir + Dataset + '/*/*data_mutations*'))
+		for FileName in ListOfCancerTypes:
+			df = pd.read_csv(FileName, sep='\t', comment='#', usecols = ['Variant_Classification','Tumor_Sample_Barcode','Hugo_Symbol']).rename(
+				columns={'Tumor_Sample_Barcode': 'Barcode'})
+			muts = muts.append(df)
 	return(muts)
 
 
@@ -191,13 +220,16 @@ def AnnotateMutationalLoad(muts, MutType):
 	return(MutationRate)
 
 
-def GetTumorPurity(DataDir = os.getcwd() + '/Data/Raw/Mutations/TCGA/' ):
-    '''Returns a dataframe of tumor purity calls for each patient in TCGA with the following columns: `Barcode`,`purity`'''
-    purity = pd.read_csv(DataDir + 'TCGA_mastercalls.abs_tables_JSedit.fixed.txt', sep='\t')
-    purity['Tumor_Sample_Barcode'] = purity['array']
-    purity = purity[['Tumor_Sample_Barcode', 'purity']].rename(columns={'Tumor_Sample_Barcode':'Barcode'})
-    purity['Barcode'] = purity['Barcode'].str[0:15]
-    return(purity)
+def GetTumorPurity(Dataset, DataDir = os.getcwd() + '/Data/Raw/Mutations/TCGA/' ):
+	'''Returns a dataframe of tumor purity calls for each patient in TCGA with the following columns: `Barcode`,`purity`'''
+	if Dataset == 'TCGA':
+		purity = pd.read_csv(DataDir + 'TCGA_mastercalls.abs_tables_JSedit.fixed.txt', sep='\t')
+		purity['Tumor_Sample_Barcode'] = purity['array']
+		purity = purity[['Tumor_Sample_Barcode', 'purity']].rename(columns={'Tumor_Sample_Barcode':'Barcode'})
+		purity['Barcode'] = purity['Barcode'].str[0:15]
+	else: 
+		return(pd.DataFrame())
+	return(purity)
 
 
 def GetTissueType(Dataset, DataDir = os.getcwd() + '/Data/Raw/Mutations/' ):
@@ -213,6 +245,13 @@ def GetTissueType(Dataset, DataDir = os.getcwd() + '/Data/Raw/Mutations/' ):
 	elif 'CCLE' in Dataset:
 		muts = pd.read_csv(DataDir +  Dataset + '/sample_info.csv', sep=',', usecols=[ 'disease', 'DepMap_ID']).rename(
 			columns={'DepMap_ID': 'Barcode','disease':'type'})
+	elif 'CPTAC' in Dataset:
+		muts = pd.DataFrame()
+		ListOfCancerTypes = glob.glob(os.path.join(DataDir + Dataset + '/*/*data_clinical_sample.txt'))
+		for FileName in ListOfCancerTypes:
+			df = pd.read_csv(FileName, sep='\t', comment='#', usecols = ['SAMPLE_ID', 'ONCOTREE_CODE']).rename(
+				columns={'SAMPLE_ID': 'Barcode','ONCOTREE_CODE':'type'})
+			muts = muts.append(df)
 	return(muts)
 
 
