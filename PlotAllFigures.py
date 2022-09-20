@@ -9,7 +9,7 @@ from pandas.core.frame import DataFrame
 from CalculateMetrics import *
 from Splicing import *
 from GetAnnotations import *
-
+from GetData import * 
 
 def GetFigureInput(FigureName):
     '''
@@ -171,16 +171,20 @@ def GetFigureInput(FigureName):
         return(ConvertPandasDFtoR(Out))
     elif FigureName == 'WithinCancerGrouped_TCGA': # Rev Response #1 - Within cancer type GLMM heat map
         Out = pd.DataFrame()
-        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/WithinCancerType/TCGAExpressionKsKaByComplexGroup*'))
+        # Aggregstes all OLS regression with purity as explanatory
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/WithinCancerType/TCGAExpressionKsKaMixedEffectRegressionWithinCancer*'))
         NumSamples = GetTissueType('TCGA').groupby('type').size().reset_index()
         Metadata = AnnotateMutationalLoad(GetPointMutations('TCGA'),'KsKa')
         Metadata = Metadata.merge(GetTissueType('TCGA'), left_on='Barcode', right_on='Barcode').groupby('type')['MutLoad'].median().reset_index()
         Metadata = Metadata.merge(GetTissueType('TCGA').groupby('type').size().reset_index().rename(columns={0:'NumSamples'}))
         for FileName in ListOfCancerTypes:
             df = pd.read_csv(FileName)
-            df['type'] = FileName.split('/')[11].replace('TCGAExpressionKsKaByComplexGroupOLSRegressionWithinCancerType','')
+            df['type'] = FileName.split('/')[11].replace('TCGAExpressionKsKaMixedEffectRegressionWithinCancerType','')
+            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+            df = df[df['Coefficient'] == 'LogScore'] 
             df = df.merge(Metadata, left_on='type', right_on='type')
             Out = Out.append(df)
+        Out = Out.merge(Complexes, right_on='Hugo', left_on='GeneName')
         return(ConvertPandasDFtoR(Out))
     elif FigureName == 'TMB_Shuffling_BetaDist': # Rev Response #2 - TMB shuffle + visalize p val dist
         shuff = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB').assign(Group='Null')
@@ -194,14 +198,124 @@ def GetFigureInput(FigureName):
         #GeneSet = df[(df['Estimate'] > 0) & (df['Adj.Pval'] < 0.05)]['GeneName']
         #gse = ConvertRDataframetoPandas(ro.r.DoGeneSetEnrichment( ConvertPandasDFtoR(GeneSet)))
         #return(ConvertPandasDFtoR(gse[['term_name','source','p_value']]))
-    elif FigureName == 'TMB_Shuffling_SigGeneCount':
-        shuff = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB').assign(Group='Null')
-        obs = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Group='Observed')
+    elif FigureName == 'TMB_Shuffling_SigGeneCount':# Rev Response #2 - TMB shuffle + gse
+        shuff = pd.read_csv(InputDir + 'Regression/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB').assign(Group='Null')
+        obs = pd.read_csv(InputDir + 'Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Group='Observed')
         df = shuff.append(obs)
         df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
         df = df[df['Coefficient'] == 'LogScore']
         df['GeneName'] = df['GeneName'].str.split('_', expand=True)[0]
         return(ConvertPandasDFtoR(df))
+    elif FigureName == 'ResidualFit_Expression_TCGA': # Rev response - WIP raw residual visualization
+        model = pd.read_csv(InputDir + 'Regression/Diagnostics/CCLEExpressionKsKaModelDiagnosticResidualVsFittedVals')
+        df = model.merge(Complexes, right_on='Hugo', left_on='GeneName', how='left' )
+    elif FigureName == 'Protein_CCLE_Subset': # Rev response - protein expression for subset in CCLE (within cancer type + all)
+        Out=pd.DataFrame()
+        tissue = GetTissueType('CCLE').groupby(['type']).size().reset_index().rename(columns={0:'NumSamples'})
+        df = pd.read_csv(InputDir + 'Regression/ProteinOLSRegressionEstimatesKsKaCCLE')        
+        df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+        df = df[df['Coefficient'] == 'LogScore']
+        all = df.merge(Complexes, right_on='Hugo', left_on='GeneName').assign(type='All').assign(NumSamples=tissue['NumSamples'].sum())
+        all = all[['adj.r.squared', 'sigma', 'Estimate', 'Std..Error', 't.value', 'Pr...t..', 'pVal', 'GeneName', 'type', 'Group', 'subgroup', 'Hugo','NumSamples', 'Coefficient']]
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/WithinCancerType/CCLEProteinKsKaOLSRegressionWithinCa*'))
+        for FileName in ListOfCancerTypes:
+            df = pd.read_csv(FileName).rename(columns={'CancerType':'type'})
+            df = df.merge(Complexes, left_on='GeneName', right_on='Hugo')
+            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+            df = df.merge(tissue,left_on= 'type', right_on = 'type', how='left')
+            df = df[df['Coefficient'] == 'LogScore']
+            df = df[['adj.r.squared', 'sigma', 'Estimate', 'Std..Error', 't.value', 'Pr...t..', 'pVal', 'GeneName', 'type', 'Group', 'subgroup', 'Hugo', 'NumSamples','Coefficient']]
+            Out = Out.append(df)
+        Out = all.append(Out)
+        return(ConvertPandasDFtoR(Out))
+    elif FigureName == 'Protein_Vs_Exp_CCLE_IndividualGene':
+        pro = pd.read_csv(InputDir + 'Regression/MedianProteinOLSRegressionEstimatesKsKaCCLE')
+        pro['Coefficient'] = pro['Unnamed: 0'].str.replace('\d+', '')
+        pro = pro[pro['Coefficient'] == 'LogScore']
+        pro['AdjPval'] = rstats.p_adjust(FloatVector(pro['pVal']), method = 'fdr')   
+        pro['DataType'] = 'Protein'
+        exp = pd.read_csv(InputDir + 'Regression/ExpressionOLSRegressionEstimatesKsKaCCLE')  
+        exp['Coefficient'] = exp['Unnamed: 0'].str.replace('\d+', '')
+        exp = exp[exp['Coefficient'] == 'LogScore']
+        exp['AdjPval'] = rstats.p_adjust(FloatVector(exp['pVal']), method = 'fdr')   
+        exp['DataType'] = 'Expression'
+        all = pro.append(exp)
+        quantile = all.groupby(['DataType'])['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'level_1':'Group'}).assign(
+            subgroup='Quantile').assign(AdjPval = 0).assign(GeneName='')
+        all = all.merge(Complexes, left_on='GeneName', right_on='Hugo')
+        all = pd.concat([all[['DataType','Group','Estimate','subgroup','AdjPval','GeneName']], quantile])
+        return(ConvertPandasDFtoR(all.astype(str)))
+    elif FigureName == 'Protein_Vs_Exp_TCGA_BRCA_IndividualGene':
+        #pro = pd.read_csv(InputDir + '/Regression/ProteinOLSRegressionWithPurityBRCAEstimatesKsKaTCGA') # TCGA BRCA protein only
+        #pro = pd.read_csv(InputDir + '/Regression/ProteinOLSRegressionWithPurityBRCAandOVEstimatesKsKaTCGA') # TCGA BRCA and OV protein only
+        pro = pd.read_csv(InputDir + '/Regression/ProteinMixedEffectRegressionWithoutPurityEstimatesKsKaCPTAC') # All avaiable CPTAC from cbioportal
+        pro['Coefficient'] = pro['Unnamed: 0'].str.replace('\d+', '')
+        pro = pro[pro['Coefficient'] == 'LogScore']
+        pro['AdjPval'] = rstats.p_adjust(FloatVector(pro['Pr...t..']), method = 'fdr')   
+        pro['DataType'] = 'Protein'
+        exp = pd.read_csv(InputDir + 'Regression/ERChapAdded/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')  
+        exp['Coefficient'] = exp['Unnamed: 0'].str.replace('\d+', '')
+        exp = exp[exp['Coefficient'] == 'LogScore']
+        exp['AdjPval'] = rstats.p_adjust(FloatVector(exp['Pr...t..']), method = 'fdr')   
+        exp['DataType'] = 'Expression'
+        all = pro.append(exp)
+        quantile = all.groupby(['DataType'])['Estimate'].quantile([0,0.1,0.5,0.9,1]).reset_index().rename(columns={'level_1':'Group'}).assign(
+            subgroup='Quantile').assign(AdjPval = 0).assign(GeneName='')
+        all = all.merge(Complexes, left_on='GeneName', right_on='Hugo')
+        all = pd.concat([all[['DataType','Group','Estimate','subgroup','AdjPval','GeneName']], quantile])
+        return(ConvertPandasDFtoR(all.astype(str)))
+    elif FigureName == 'AdjPValueAllCorum': # adjusted p-value between all complexes in CORUM in shuffled vs observed - RR
+        # shuff = pd.DataFrame() # empty df to append all shuffled permutations to 
+        # ShuffFiles = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/Shuffling/*'))
+        # Rep = 0 #
+        # for FileName in ShuffFiles: # merge all permutations/shuffled TMB estimates into one df 
+        #     Rep = Rep + 1
+        #     shuff = shuff.append(pd.read_csv(FileName).assign(Group = 'Null_' + str(Rep)))
+        # obs = pd.read_csv(InputDir + 'Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity').assign(Group='Observed')
+        # df = shuff.append(obs) #  add shuffled to the observed non shuffled regression estimate
+        # df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+        # df = df[df['Coefficient'] == 'LogScore']
+        # Out = pd.DataFrame() # empty df to append final results
+        # for gene in df['GeneName'].unique():
+        #     SingleGene = df[df['GeneName'] == gene]
+        #     NullSingleGene = SingleGene[SingleGene['Group'] != 'Observed']
+        #     ObsEstimate = SingleGene[SingleGene['Group'] == 'Observed']['Estimate'].tolist()[0] # beta coefficient for gene in observed/non-shuffled data
+        #     if ObsEstimate < 0:
+        #         AdjPval = len(NullSingleGene[NullSingleGene['Estimate'] < ObsEstimate])/len(NullSingleGene)
+        #     else: # observed estimate for gene is positive 
+        #         AdjPval = len(NullSingleGene[NullSingleGene['Estimate'] > ObsEstimate])/len(NullSingleGene)
+        #     Out = Out.append( SingleGene[SingleGene['Group'] == 'Observed'].assign(AdjPval = AdjPval).reset_index())
+        # corum = pd.read_csv(os.getcwd() + '/GeneSets/coreComplexes.txt.zip', sep='\t')
+        # corum = corum.set_index(['ComplexName'])['subunits(Gene name)'].str.split(';', expand=True).fillna(value=np.nan).reset_index()
+        # corum = pd.melt(corum, id_vars=['ComplexName']).dropna().rename(columns={'value':'GeneName'})
+        # corum['GeneName'] = corum['GeneName'].str.upper()
+        # Out = Out.merge(corum[['GeneName','ComplexName']], right_on='GeneName', left_on='GeneName', how='left')#.rename(columns={'Estimate':'Null_Estimate'})
+        #Out.to_csv('/home/tilk/ShuffledByGene')
+        Out = pd.read_csv('/home/tilk/ShuffledByGene')
+        return(ConvertPandasDFtoR(Out.dropna()))
+    elif FigureName == 'CCLE_Correlation_RNA_and_Protein':
+        pro = pd.read_csv(InputDir + 'Regression/MedianProteinOLSRegressionEstimatesKsKaCCLE').rename(columns={'Estimate':'Protein_Estimate'})
+        pro['Coefficient'] = pro['Unnamed: 0'].str.replace('\d+', '')
+        pro = pro[pro['Coefficient'] == 'LogScore']
+        pro['AdjPval'] = rstats.p_adjust(FloatVector(pro['pVal']), method = 'fdr')   
+        pro['DataType'] = 'Protein'
+        exp = pd.read_csv(InputDir + 'Regression/ExpressionOLSRegressionEstimatesKsKaCCLE').rename(columns={'Estimate':'Exp_Estimate'})
+        exp['Coefficient'] = exp['Unnamed: 0'].str.replace('\d+', '')
+        exp = exp[exp['Coefficient'] == 'LogScore']
+        all = pro[['Protein_Estimate','GeneName']].merge(exp[['Exp_Estimate','GeneName']], left_on='GeneName', right_on='GeneName')
+        all = all.merge(Complexes, left_on='GeneName', right_on='Hugo')
+        return(ConvertPandasDFtoR(all.astype(str)))
+    elif FigureName == 'RawResidualsInGenesOfInterest_TCGA':
+        df = pd.read_csv(InputDir + 'Regression/Diagnostics/TCGAExpressionKsKaModelDiagnosticResidualVsFittedVals')
+    elif FigureName == 'VarianceExpressionByCancerType':
+        from scipy.stats import zscore
+        df = GetExpressionData('TCGA')
+        df = df.merge(GetTissueType('TCGA'), left_on='Barcode', right_on='Barcode')
+        df['NormalizedValue'] = df.groupby(['GeneName']).Value.transform(lambda x : zscore(x,ddof=1))
+        df = df.groupby(['type','GeneName'])['Value'].var().reset_index()
+        df = df.merge(Complexes, left_on='GeneName', right_on='Hugo', how='left')
+        df.to_csv(InputDir + 'Regression/TCGAVarianceInGeneExpression')
+
 
 
 def GetFigure(Figure):
@@ -252,5 +366,21 @@ def GetFigure(Figure):
         ro.r.ComparePValueDistributions(GetFigureInput('TMB_Shuffling_SigGeneCount'))  
     elif Figure == 'RevResp_AdjustedPValGeneSetEnrichment': #Reviewer response - adj and g pval gse
         ro.r.PlotAdjustedPValGeneSetEnrich(GetFigureInput('TMB_Shuffling_SigGeneCount'))
+    elif Figure == 'Protein_CCLE_Subset': # Rev response - protein in complexes in CCLE
+        ro.r.PlotProteinAcrossCancerTypesInGroups(GetFigureInput('Protein_CCLE_Subset'))
+    elif Figure == 'Protein_Vs_Exp_CCLE_IndividualGene': # Rev response - individual gene protein vs exp
+        ro.r.ProteinVsExpressionByIndividualGene(GetFigureInput('Protein_Vs_Exp_CCLE_IndividualGene'),'CCLE')
+    elif Figure == 'Protein_Vs_Exp_TCGA_BRCA_IndividualGene': # Rev response - individual gene protein vs exp
+        ro.r.ProteinVsExpressionByIndividualGene(GetFigureInput('Protein_Vs_Exp_TCGA_BRCA_IndividualGene'),'TCGA')
+    elif Figure == 'AdjPValueAllCorum': # Rev response -- p-value for all corum, no gse
+        ro.r.PlotAllCorumNullvsObs(GetFigureInput('AdjPValueAllCorum'))
+    elif Figure == 'CCLE_Correlation_RNA_and_Protein': # RR - correlation coefficients between rna and protein
+        ro.r.PlotCorrelationCoefficientsBetweenExpAndProt(GetFigureInput('CCLE_Correlation_RNA_and_Protein'))
 
-        
+
+#GetFigureInput('AdjPValueAllCorum')
+
+GetFigureInput('VarianceExpressionByCancerType')
+
+
+# ro.r.PlotCancerTypeInComplexesAcrossGroups(GetFigureInput('WithinCancerGrouped_TCGA'))
