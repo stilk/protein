@@ -290,6 +290,7 @@ PlotRegCoefPerGroup = function(df) {
 }
 
 
+
 PlotDeltaPSI = function(df) {
     df$term_name  = gsub(', ATP synthesis by chemiosmotic coupling, and heat production by uncoupling proteins.', "", df$term_name)  
     df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
@@ -314,6 +315,27 @@ PlotDeltaPSI = function(df) {
         theme_minimal() + theme(legend.position='bottom', legend.title = element_blank(), legend.title.align=0.5) 
     ggsave(paste0(PlotDir, 'AS_Delta_PSI_IntonRetention_TCGA.pdf' ), width=6.5, height=4.5, units='in')
 }
+
+
+
+PlotWithinCancerTypeExpressionAcrossGroups = function(df, dataset) { 
+    print(head(df))
+    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
+    df$NegLog10Pval = -log10(as.numeric(as.character(df$AdjPval)))
+    df$SortedLevel = factor(df$Group, levels=c('Mitochondrial Chaperones', 'ER Chaperones','Small HS','HSP 100','HSP 90',
+                'HSP 70','HSP 60', 'HSP 40','20S Core','20S Catalytic Core','Immunoproteasome Core','Immunoproteasome Catalytic Core',
+                 '11S Regulatory Particle', '19S Regulatory Particle','Mitochondrial Ribosomes', 'Cytoplasmic Ribosomes'))
+    Estimate = ggplot(data=df, aes(x = CancerType, y=as.numeric(as.character(Estimate)), color=SortedLevel)) +  geom_boxplot() +
+                facet_wrap(~SortedLevel, ncol=5) +
+                 theme_minimal() + labs(y='Effect Size (Beta Coefficient)', x='') +  theme(legend.position='none') +
+                 geom_hline(yintercept=0, linetype='dashed', col = 'black') + #facet_wrap(~SortedLevel, scales='free_x', ncol=12) +
+                 theme(strip.text = element_text(face="bold", size=8)) + ggtitle(dataset) +
+                 theme(plot.title = element_text(hjust = 0.5)) + # Center title
+                 theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size=7))
+    ggsave(paste0(PlotDir, 'RegCoefPerGroupsWithinCancerType_', dataset,'.pdf' ), width=10, height=6, units='in')
+
+}
+
 
 
 
@@ -361,6 +383,267 @@ PlotJacknifedDrugsAcrossGroups = function(df) {
         theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) +
         theme(plot.title = element_text(hjust = 0.5, face = "bold")) + ggtitle('PRISM (Drug Screen)') 
     ggsave(paste0(PlotDir, 'CCLEDrugJacknifed.pdf' ), width=12, height=6, units='in')
+}
+    
+
+VisualizeBetaAfterShuffle = function(df) {
+    df$NegLog10Pval = -log10(as.numeric(as.character(df$Pr...t..)))
+    Beta = ggplot(df, aes(x=Estimate, color=Group, fill=Group)) +
+        geom_histogram() + theme_minimal() + labs(x='Beta Coefficient (TMB vs Expression)', y='Counts')
+    Pval = ggplot(df, aes(x=NegLog10Pval, color=Group, fill=Group)) +
+        geom_histogram() + theme_minimal() + labs(x='Negative Log10 P-Value', y='Counts')
+    Combined = plot_grid(Beta, Pval, rel_heights=c(0.88, 1), ncol = 1) 
+    ggsave(paste0(PlotDir, 'TMBShuffling_BetaDist_Expression_TCGA.pdf' ), width=4, height=4, units='in')
+}
+
+ComparePValueDistributions = function(df) {
+    original = df[df$Group == 'Observed',]
+    null = df[df$Group == 'Null',]
+    CalcValues = function(x) { # used to calculate adjusted p values; how many values are greater than estimate under null?
+        if (x > 0) {
+            return(nrow(null[null$Estimate > x,])/nrow(null))
+        } else {
+            return(nrow(null[null$Estimate < x,])/nrow(null))
+        }
+    }
+    original$adj_pval = sapply(original$Estimate,CalcValues)
+    plotting = rbind(
+        cbind(setNames(original[c('GeneName','adj_pval')], c('Gene','Pval')), data.frame(Group=c('Adjusted'))),
+        cbind(setNames(original[c('GeneName','Pr...t..')], c('Gene','Pval')), data.frame(Group=c('Original')))
+    )
+    plotting$NegLog10Pval = -log10(plotting$Pval)
+    Pval = ggplot(plotting, aes(x=NegLog10Pval, color=Group, fill=Group)) +
+        geom_histogram() + theme_minimal() + labs(x='Negative Log10 P-Value', y='Counts') +
+        scale_y_log10() + facet_wrap(~Group, scales="free_x")
+    ggsave(paste0(PlotDir, 'TMBShuffling_AdjustedPval_TCGA.pdf' ), width=4, height=4, units='in')
+
+}
+
+PlotVarExprByCancerType = function() {
+    df = read.table(paste0(getwd(),'/Data/Regression/TCGAVarianceInGeneExpression'), sep=',', header=T)
+    grps = df[df['Group'] != '',]
+    grps$Group = gsub(" ","\n", grps$Group)
+
+    ggplot(grps, aes(y=type, x=Value, color=Group, fill=Group)) + 
+        geom_boxplot() + theme_minimal() +  theme(legend.position="none") +
+        facet_grid(cols=vars(Group), scales='free_x') + labs(y='',x='Variance In Gene Expression') +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size=7)) +
+        theme(strip.text.y = element_text(size = 7)) + 
+        theme(strip.text.x = element_text(size = 7))
+    
+    ggsave(paste0(PlotDir, 'VarianceInExpAcrossCancerType_TCGA.pdf' ), width=8, height=6, units='in')
+
+}
+
+
+# PlotAllCorumNullvsObs = function(df) {
+#     original = df[df$Group == 'Observed',]
+#     null = df[df$Group == 'Null',]
+#     CalcValues = function(x) { # used to calculate adjusted p values; how many values are greater than estimate under null?
+#         if (x > 0) {
+#             return(nrow(null[null$Estimate > x,])/nrow(null))
+#         } else {
+#             return(nrow(null[null$Estimate < x,])/nrow(null))
+#         }
+#     }
+#     original$adj_pval = sapply(original$Estimate,CalcValues)
+
+
+# }
+
+
+PlotCorrelationCoefficientsBetweenExpAndProt = function(df) {
+
+    df$Exp_Estimate = as.numeric(as.character(df$Exp_Estimate))
+    df$Protein_Estimate = as.numeric(as.character(df$Protein_Estimate))
+    # print(head(df))
+    # cors = df %>% group_by(Group, subgroup) %>% summarise(
+    #     cor = cor.test(Protein_Estimate, Exp_Estimate)$estimate,
+    #     pval = cor.test(Protein_Estimate, Exp_Estimate)$p.value)
+
+ 
+    cors = df %>% group_by(Group, subgroup) %>% summarise(
+        abs = abs(Protein_Estimate - Exp_Estimate))
+
+    print(head(cors))
+
+    PlotEstimate = ggplot(cors, aes(x=Group, y=abs, color=subgroup, fill=subgroup)) + 
+    geom_boxplot() +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.title = element_blank()) +
+    facet_wrap(~subgroup, scales='free_x') + labs(x='', y="Difference Between Protein and Expression ") 
+    #scale_y_continuous(breaks = seq(-1, 1, by = 0.2))
+    
+    #PlotPval = ggplot(cors, aes(x=Group, y=pval)) + geom_point()
+    #Combined = plot_grid(PlotEstimate, PlotPval, rel_heights=c(0.88, 1), ncol = 1) 
+
+    ggsave(paste0(PlotDir,'CCLE_Protein_vs_Exp_Correlation_BoxPlot.pdf' ), width=8, height=5, units='in')
+
+}
+
+
+
+PlotAdjustedPValGeneSetEnrich = function(df) {
+    
+    original = df[df$Group == 'Observed',]
+    null = df[df$Group == 'Null',]
+    CalcValues = function(x) { # used to calculate adjusted p values; how many values are greater than estimate under null?
+        if (x > 0) {
+            return(nrow(null[null$Estimate > x,])/nrow(null))
+        } else {
+            return(nrow(null[null$Estimate < x,])/nrow(null))
+        }
+    }
+    original$adj_pval = sapply(original$Estimate,CalcValues)
+    library('gprofiler2')
+    result = data.frame(gost(original[original$adj_pval  < 0.05,]$GeneName)$result)
+    df= subset(result, result$source == 'CORUM')[c('source','term_name','p_value')]
+    # Match CORUM terms to broader categories
+    df$grouping = ''
+    #df[grep('ribo',df[,1]),]$grouping = 'Translation' 
+    df[grep('roteasome|PA',df[,2]),]$grouping = 'Protein Degradation' 
+    df[grep('CCT',df[,2]),]$grouping = 'Chaperone'
+    df[grep('synthesome|BRCA|FA|BLM|MCM|RC|BRAFT|DNA-PK|RFC2|PCNA|GINS|MCC',df[,2]),]$grouping = 'DNA Replication/Repair'
+    #df[grep('snRNP|plice|SMN|Rnase|Sm|Exosome',df[,2]),]$grouping = 'Transcription'
+    df[grep('Conden|kinetochore',df[,2]),]$grouping = 'Chromosome Segregation'
+    df[grep('RC|CEN|Nup',df[,2]),]$grouping = 'DNA Replication/Repair'
+    # Add colors
+    colors = data.frame(
+        grouping = c('Protein Degradation','Translation','Transcription','Chaperone','DNA Replication/Repair', 'Immune','Other' ),
+        colors = as.character(c('#F7B530','#3EA612','#A3E189','#F73036','#82CEF5','#3366C7','#F97FA2'))
+    )
+    ColorsForGrouping=colors$grouping
+    df = merge(df, colors, by='grouping')
+    df$negative_log10_of_adjusted_p_value = -log10(df$p_value)
+    rankingDF = df %>% group_by(grouping) %>% summarise(max = max(negative_log10_of_adjusted_p_value))
+    rankingDF = rankingDF[order(rankingDF$max),]
+    rankingDF$rank = nrow(rankingDF):1
+    df = merge(df, rankingDF, by='grouping')
+    df = df[order(df$rank, -df$negative_log10_of_adjusted_p_value), ]
+    df$ID = 1:nrow(df)
+    df$ID2 = factor(df$ID, levels=df$ID)
+    df$grouping = factor(df$grouping, levels=unique(df$grouping))
+    df$term_name = gsub("\\(.*","",df$term_name) # remove parenthesis for visualization and repeat categories
+    df= df[!duplicated(df$term_name),] # Remove duplicate hits
+    print(head(df))
+    PlotOut = ggplot(df, aes(x=reorder(term_name,-ID), y=negative_log10_of_adjusted_p_value, fill=colors)) +
+        geom_col() +
+        coord_flip() +
+        facet_grid(rows=vars(grouping), scales='free_y', space='free', switch='y') +
+        labs(x='', y='Negative Log10 of Adjusted P-Value') + 
+        #scale_fill_brewer(palette="Paired") +
+        scale_fill_identity(guide = "legend", 
+                            labels = unique(df$grouping),
+                            breaks = unique(df$colors))  +
+        # scale_fill_manual(values = df$colors, labels=df$grouping) +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.title = element_blank())+
+        theme(strip.text.y = element_blank(), legend.position='bottom') +
+        guides(fill=guide_legend(nrow=2,byrow=TRUE))
+    ggsave(paste0(PlotDir, 'TCGA_AdjustedPVal_CORUM_GSE.pdf' ), width=7, height=5, units='in') 
+}
+
+
+ProteinVsExpressionByIndividualGene = function(df, Dataset) {
+
+    print(head(df))
+    quantile = subset(df, df$subgroup == 'Quantile')
+    quantile$Label = paste0(as.numeric(as.character(quantile$Group))*100, '%')
+    quantile = subset(quantile, (quantile$Label != '0%') & (quantile$Label != '100%'))
+    df = subset(df, df$subgroup != 'Quantile')
+    df$NegLog10Pval = -log10(as.numeric(as.character(df$AdjPval)))
+    df$SortedLevel = factor(df$Group, levels=c('Mitochondrial Chaperones', 'ER Chaperones','Small HS','HSP 100','HSP 90',
+                'HSP 70','HSP 60', 'HSP 40','20S Core','20S Catalytic Core','Immunoproteasome Core','Immunoproteasome Catalytic Core',
+                 '11S Regulatory Particle', '19S Regulatory Particle','Mitochondrial Ribosomes', 'Cytoplasmic Ribosomes'))
+        
+    print(head(quantile))
+    Estimate = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(Estimate)), color=subgroup)) +  
+                geom_vline(data = quantile, aes(xintercept = as.numeric(as.character(Estimate))), alpha=0.6, color='grey', size=1) +
+                geom_boxplot() +
+                theme_minimal() + labs(x='Effect Size (Beta Coefficient)', y='') + theme(legend.position='none') +
+                facet_wrap(~DataType, scales='free_x') +
+                scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
+                #geom_vline(data=filter(quantile, Group == '0.05'), aes(xintercept=Estimate))+
+                #geom_vline(xintercept=0, linetype='dashed', col = 'black') + 
+                geom_text(data = quantile, aes(xintercept = as.numeric(as.character(Estimate)), 
+                    label=Label, y=12), colour="black",  vjust="inward", size=3) +
+                theme(strip.text = element_text(face="bold", size=12),  panel.grid.minor = element_blank(), panel.grid.major = element_blank())+
+                theme(panel.spacing = unit(2, "lines"), legend.title=element_blank())
+                
+    Rank = ggplot(data=df, aes(y = SortedLevel, x=as.numeric(as.character(NegLog10Pval)), color=subgroup)) + 
+                geom_vline(xintercept= -log10(0.05), alpha=0.6, size=1, col = 'grey') + 
+                geom_boxplot() +
+                theme_minimal() + labs(x='Negative Log10 of Adjusted P-Value', y='')  + theme(legend.position='bottom') +
+                facet_wrap(~DataType, scales='free_x') +
+                theme(legend.position='bottom', legend.title=element_blank()) +
+                scale_color_manual(values=c('#8856a7','#F7B530','#3EA612')) + 
+                theme(strip.text = element_text(face="bold", size=12))
+
+
+    Combined = plot_grid(Estimate, Rank, rel_heights=c(0.88, 1), ncol = 1) 
+    ggsave(paste0(PlotDir, Dataset,'_Protein_vs_Exp_BoxPlot.pdf' ), width=8, height=8, units='in')
+
+
+}
+
+PlotProteinAcrossCancerTypesInGroups = function(df) { 
+    df = na.omit(df)
+    df = subset(df, df$type =='All')
+    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
+    df$NumSamples = as.numeric(as.character(df$NumSamples))
+    df = subset(df, df$NumSamples > 10)
+    df$NegLog10Pval = -log10(as.numeric(as.character(df$AdjPval)))
+    df$SortedLevel = factor(df$Group, levels=c('Mitochondrial Chaperones', 'ER Chaperones','Small HS','HSP 100','HSP 90',
+                'HSP 70','HSP 60', 'HSP 40','20S Core','20S Catalytic Core','Immunoproteasome Core','Immunoproteasome Catalytic Core',
+                 '11S Regulatory Particle', '19S Regulatory Particle','Mitochondrial Ribosomes', 'Cytoplasmic Ribosomes'))
+    Estimate = ggplot(data=df, aes(x = type, y=as.numeric(as.character(Estimate)), color=SortedLevel)) +  geom_boxplot() +
+                facet_wrap(~SortedLevel, ncol=5, scales='free_y') +
+                 theme_minimal() + labs(y='Effect Size (Beta Coefficient)', x='') +  theme(legend.position='none') +
+                 geom_hline(yintercept=0, linetype='dashed', col = 'black') + #facet_wrap(~SortedLevel, scales='free_x', ncol=12) +
+                 theme(strip.text = element_text(face="bold", size=8)) + 
+                 theme(plot.title = element_text(hjust = 0.5)) + # Center title
+                 theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size=7))
+    ggsave(paste0(PlotDir, 'CCLE_ProteinGrouped_WithinType.pdf' ), width=12, height=8, units='in')
+}
+
+
+PlotCancerTypeInComplexesAcrossGroups = function(df) { 
+
+
+    # data <- scale(t(data))
+    # ord <- hclust( dist(data, method = "euclidean"), method = "ward.D" )$order
+    # ord
+
+    print(head(df))
+    df$NumSamples = as.numeric(as.character(df$NumSamples))
+    df$MutLoad = as.numeric(as.character(df$MutLoad))
+    #df = subset(df, df$NumSamples > 250)
+    #df = subset(df, df$MutLoad > 25)
+    df$AdjPval = p.adjust(df$Pr...t.., method= 'fdr')
+    df$Sig = ifelse(df$Pr...t.. < 0.05, '*','')
+    df$Sig = ifelse(df$Pr...t.. < 0.005, '**', df$Sig)
+    df$Sig = ifelse(df$Pr...t.. < 0.0005, '***', df$Sig)
+    df$Dummy = '' #'Protein Coding\nMutations'
+    df$Group = gsub('mic Rib', 'mic\nRib', df$Group); df$Group = gsub('ial Rib', 'ial\nRib', df$Group); df$Group = gsub('ial Ch', 'ial\nCh', df$Group)
+    df$Group = gsub('ory Pa', 'ory\nPa', df$Group)
+    df$subgroup = gsub('Ribosomes','Translation',df$subgroup)
+    df$Group2 = factor(df$Group, levels= c('HSP 100','HSP 90','HSP 70','HSP 60','Mitochondrial\nChaperones','ER Chaperones','Small HS',
+                '19S Regulatory\nParticle','20S Core','Mitochondrial\nRibosomes','Cytoplasmic\nRibosomes'))
+    ggplot(df, aes(y=type, x = Group2 ,fill=Estimate)) + geom_tile()+
+        #scale_fill_viridis(discrete=FALSE) +
+        #scale_fill_gradientn(colours=c("blue","black","red")) +
+        scale_fill_gradientn(colors=c("red","white","blue"), 
+            values=rescale(c(min(df$Estimate),0, max(df$Estimate))),limits=c(min(df$Estimate),max(df$Estimate)))+
+        geom_text(aes(label = Sig, color=Sig), show.legend = FALSE, size= 8, vjust = 0.85) +
+        theme_minimal() +
+        #coord_flip() +
+        #facet_wrap(~subgroup, scales='free', ncol=5, space='free_x') +
+        #facet_wrap(~Group, scales='free_x', space='free') +
+        facet_grid(cols=vars(subgroup), scales='free_x', space='free_x') +
+        scale_colour_manual(values=c("black","black",'black','black')) +
+        labs(y='',x='', fill='Beta\nCoefficient') + theme(plot.title = element_text(hjust = 0.5, face = "bold")) +
+        theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ theme(text = element_text(size=18))
+    ggsave(paste0(PlotDir, 'TCGA_ExpressionGrouped_WithinType.pdf' ), width=12, height=8, units='in')
 }
 
 
