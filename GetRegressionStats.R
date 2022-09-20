@@ -5,7 +5,9 @@ library(lme4)
 library(glmnet)
 library(lmerTest)
 library(dplyr)
-
+library(moments) 
+library(car)
+library(nortest)
 
 NormalizeValues = function(df) {
     # Z scores expression values in the independent variable so that they're normally distributed.
@@ -180,9 +182,6 @@ DoRegressionPerGene = function(df, RegressionType, NormalizeY, ModelDiagnostics=
         }}, 
             error=function(error_message) { 
             print(message(error_message))
-            write.table(SingleGene, '/home/tilk/DEBUG', quote=FALSE)
-            print(head(SingleGene))
-            #print(RegressionResults)
             print(paste0("Couldn't calculate regression statistics for ", AllGenes[i]))
         })
     }
@@ -203,7 +202,7 @@ DoModelDiagnostics = function(df, model, DiagnosticType='') {
 
     Diagnostics = data.frame() # Empty df where results are appended
     df = na.omit(df) # Make sure no NAs exist, which are already omitted during regression 
-    if (DiagnosticType == 'SummarizedByAllGenes') {
+    if (DiagnosticType == 'SummarizedByAllGenes') { # Pearson's R 
         Diagnostics = rbind(Diagnostics, data.frame('PearsonsR' = cor(fitted(model),resid(model), method=c("pearson")),
             'Diagnostic' = c('FullModel'), 'Type' = c('All'))) # Compare residuals in the entire model
         Diagnostics = rbind(Diagnostics, data.frame('PearsonsR' = cor(df$LogScore, as.data.frame(summary(model)$residuals)[,1], 
@@ -218,8 +217,20 @@ DoModelDiagnostics = function(df, model, DiagnosticType='') {
                 'Type' = WithinGroupComp$type))   # Type also only for CCLE regression  
         } 
     } else if (DiagnosticType == 'RawValsByComplex'){
-        Diagnostics = WithinGroupComp = data.frame(gene = as.character(df$GeneName), type = as.character(df$type), 
+        Diagnostics = data.frame(gene = as.character(df$GeneName), type = as.character(df$type), 
             fitted = c(fitted(model)), resid = c(resid(model)) )  # Raw residuals for every gene and cancer type
+    } else if (DiagnosticType == 'NoAutocorrelation') { # independence between fitted vs predicted values
+        # Perform Kolmogorov-Smirnov test to see if two samples come from same distribution, would expect to significantly reject null if not correlated
+        # Perform Durbin Watson test for detecting autocorrelation from residuals in regression model
+        # Durbin Watson test should be a value of 2 if no autocorrelatoin
+        # Should perhaps also run Breusch-Godfrey test?
+        Diagnostics = data.frame(durbin_watson = durbinWatsonTest(c(resid(model))), # Durbin Watson test should be a value of 2 if no autocorrelation
+            ks_statistic = ks.test(c(resid(model)), c(fitted(model)))$statistic, ks_pvalue = ks.test(c(resid(model)), c(fitted(model)))$p.value) 
+    } else if (DiagnosticType == 'Homoscedasticity') { # residuals should follow normal distribution with zero mean and equal variance
+        # Perform Anderson-Darling test where null hypothesis is that it is normally distributed; expect to not reject null
+        # Add measurements of skewness (test of symmetry in distr) and kurtosis (measure whether distribution is shifted; should be 3 if normally dist)
+        Diagnostics = data.frame(ad_statistic = ad.test((c(resid(model))))$p.value, ad_pvalue=ad.test((c(resid(model))))$p.value,
+                skewness = skewness(c(resid(model))), kurtosis = kurtosis(c(resid(model))) )
     }
     return(Diagnostics)
 }
