@@ -13,6 +13,8 @@ from GetAnnotations import *
 from GetData import * 
 
 
+
+
 def GetRegressionStatsInput(Dataset, DataType, MutType, AllDrugs=False):
     ''' 
     Outputs a dataframe used for regression analysis which compares how a variable of interest (e.g. expression values) 
@@ -114,7 +116,7 @@ def DoRegressionByAge(DataType='Expression', MutType='KsKa', OutDir=os.getcwd() 
     Output.to_csv(OutDir + 'TCGA_GLMM_ByAgeGroups')
 
 
-def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa'), ModelDiagnostics='None'):
+def GetshRNARegression(ModelDiagnostics='None'):
     '''
     Uses linear regression to measure the association of viability after expression knockdown and mutational load. 
     Input data for regressinon is taken from @GetRegressionInput. Outputs dataframe of regression results.
@@ -124,8 +126,8 @@ def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RN
                         summarized as correlation coef. If 'RawValsByComplex', will output raw residuals for genes in complexes of interest.
                         Model diagnostics are performed by @GetRegressionModelDiagnostics. If 'None', will not perform model diagnostics.
     '''
-
     SetUpRegressionPackages()
+    df = GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa')
     groups = GetGeneAnnotationsOfInterest()
     df = df.merge(groups, left_on='GeneName', right_on='Hugo')
     Out = pd.DataFrame()
@@ -142,7 +144,7 @@ def GetshRNARegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='RN
 
 
 
-def GetPerDrugRegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='Drug', MutType='KsKa'), ModelDiagnostics='None'):
+def GetPerDrugRegression(ModelDiagnostics='None'):
     '''
     Uses linear regression to measure the association of viability after drug inhibition and mutational load. 
     Input data for regressinon is taken from @GetRegressionInput. Outputs dataframe of regression results.
@@ -153,6 +155,7 @@ def GetPerDrugRegression(df = GetRegressionStatsInput(Dataset='CCLE', DataType='
                         Model diagnostics are performed by @GetRegressionModelDiagnostics. If 'None', will not perform model diagnostics.
     '''
     SetUpRegressionPackages()
+    df = GetRegressionStatsInput(Dataset='CCLE', DataType='Drug', MutType='KsKa')
     Out = pd.DataFrame()
     for Drug in df['name'].unique():
         SingleDrug = ConvertPandasDFtoR(df[df['name'] == Drug].dropna())
@@ -243,9 +246,6 @@ def JacknifeAcrossCancerTypes(Dataset, DataType, CancerTypeToRemove='', MutType=
         if CancerTypeToRemove != '': # Only iterating on one cancer type; break loop if true
             print('Done with analysis for cancer type: ' + str(CancerType))
             break
-        
-#def GetVarianceInExpressionByCancerType():
-#
 
 
 def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', ModelDiagnostics='SummarizedByAllGenes', OutDir=os.getcwd() + '/Data/Regression/Diagnostics/'):
@@ -259,6 +259,7 @@ def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', ModelDiagno
                 if 'RawValsByComplex' will output raw residuals for genes in complexes of interest.
     @OutDir = Output directory to write to file
     '''
+    print(Dataset, DataType, MutType,ModelDiagnostics)
     if DataType == 'Expression':
         df = GetExpressionRegression(Dataset, DataType='Expression', MutType=MutType, ModelDiagnostics = ModelDiagnostics)
     elif DataType == 'shRNA':
@@ -275,7 +276,7 @@ def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', ModelDiagno
 ### PROTEIN ###
 
 # GetProteinRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/MedianProteinOLSRegressionEstimatesKsKaCCLE')
-GetProteinRegression('CPTAC').to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ProteinMixedEffectRegressionWithoutPurityEstimatesKsKaCPTAC')
+# GetProteinRegression('CPTAC').to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ProteinMixedEffectRegressionWithoutPurityEstimatesKsKaCPTAC')
 
 
 
@@ -286,17 +287,22 @@ GetProteinRegression('CPTAC').to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/R
 # GetWithinCancerType(Dataset='TCGA', DataType='Expression')
 
 
-
-
 # GetWithinCancerType(Dataset='CCLE', DataType='Protein')
 # GetWithinCancerTypeGrouped('TCGA','Expression')
   
 # JacknifeAcrossCancerTypes('CCLE', 'Protein')
 
-# GetExpressionRegression('TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics=False, ShuffleTMB=True).to_csv(
-#     '/labs/ccurtis2/tilk/scripts/protein/Data/Regression/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB'
-# )
+# import random
+# RandStr = str(random.randint(0, 900000000))
+# print("STARTING NOW")
+# print(RandStr)
+
+# GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics='None', ShuffleTMB=True).to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/Shuffling/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB_' + RandStr)
 
 
-# GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics='SummarizedByAllGenes')
+# GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics='Homoscedasticity').to_csv('/labs/ccurtis2/tilk/scripts/protein/homoscesdascity-TCGA')
+
+
+# GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics='NoAutocorrelation').to_csv('/labs/ccurtis2/tilk/scripts/protein/autocor-TCGA')
+
 
