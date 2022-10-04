@@ -8,6 +8,7 @@ library(dplyr)
 library(moments) 
 library(car)
 library(nortest)
+library(lmtest)
 
 NormalizeValues = function(df) {
     # Z scores expression values in the independent variable so that they're normally distributed.
@@ -44,6 +45,22 @@ DoMixedEffectRegression = function(df, NormalizeY, ModelDiagnostics='None') { # 
 }
 
 
+DoRegressionByPurity = function(df, NormalizeY, ModelDiagnostics='None') {
+    if (NormalizeY) {
+        if(!("NormalizedValue" %in% names(df))) { # If normalized values don't exist in dataframe, normalize vals
+           df = data.frame(df %>% group_by(GeneName) %>% do(data.frame(NormalizeValues(.))))    
+        }
+        model = lmer(purity ~ (1 | type) + NormalizedValue , data=df)
+    } else {
+        model = lmer(purity ~  (1 | type) + Value, data=df)
+    }
+    if (ModelDiagnostics != 'None'){ # Do model diagnostics
+        return(DoModelDiagnostics(df, model,ModelDiagnostics))
+    } else { # Don't do model diagnostics
+        return(data.frame(summary(model)[10]$coefficients, summary(model)[11]))
+    }
+}
+    
 
 
 DoMixedEffectRegressionWithoutPurity = function(df, NormalizeY, ModelDiagnostics='None') { # Used for expression (TCGA)
@@ -99,6 +116,32 @@ DoOLSRegressionWithGeneName = function(df, NormalizeY, ModelDiagnostics='None') 
 
 
 
+
+DoLinearRegressionWithPurityAndGeneName = function(df, NormalizeY, ModelDiagnostics='None') { # Used for within cancer type grouped TCGA
+    # Does OLS regression of Values by LogScore (i.e. mutational load) and outputs a dataframe of regression results. 
+    # Parameters:
+    #   @df = dataframe of raw inputs used for regression. Should have column for the dependent variable named 'LogScore'. 
+    #       Independent variable column is named 'Value'.
+    #   @NormalizeY = boolean of whether to normalize y values using @NormalizeValues
+    #   @ModelDiagnostics = string of which type of model diagnostic to run by @DoModelDiagnostic,
+    #       will not run if string is 'None' 
+    if (NormalizeY) {
+        if(!("NormalizedValue" %in% names(df))) { # If normalized values don't exist in dataframe, normalize vals
+           df = NormalizeValues(df)
+        }
+        df = NormalizeValues(df)
+        model = lm(NormalizedValue ~  LogScore + purity + GeneName, data=df)
+    } else { # do not normalize Y values
+        model = lm(Value ~ LogScore + purity + GeneName, data=df)
+    }
+    if (ModelDiagnostics != 'None'){ # Do model diagnostics
+        return(DoModelDiagnostics(df, model,ModelDiagnostics))
+    } else { # Don't do model diagnostics
+        f = summary(model)$fstatistic
+        pVal = pf(f[1],f[2],f[3],lower.tail=F) # p value for the overall fit of the model againt null that R2=0
+        return(data.frame(summary(model)[9], summary(model)[6], summary(model)[4]$coefficients, pVal))
+    }
+}
 
 
 DoLinearRegressionWithPurity = function(df, NormalizeY, ModelDiagnostics='None') { # Used for protein TCGA
@@ -172,13 +215,15 @@ DoRegressionPerGene = function(df, RegressionType, NormalizeY, ModelDiagnostics=
         GeneName = unique(SingleGene$GeneName)
         tryCatch( 
         {  if (RegressionType == 'MixedEffect') {
-                RegressionResults = rbind(RegressionResults, data.frame(DoMixedEffectRegression(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
+            RegressionResults = rbind(RegressionResults, data.frame(DoMixedEffectRegression(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
         } else if (RegressionType == 'OLS') {
-                RegressionResults = rbind(RegressionResults, data.frame(DoLinearRegression(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
+            RegressionResults = rbind(RegressionResults, data.frame(DoLinearRegression(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
         } else if (RegressionType == 'OLSWithPurity') {
-                RegressionResults = rbind(RegressionResults, data.frame(DoLinearRegressionWithPurity(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
+            RegressionResults = rbind(RegressionResults, data.frame(DoLinearRegressionWithPurity(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
         } else if (RegressionType == 'MixedWithoutPurity') {
-                RegressionResults = rbind(RegressionResults, data.frame(DoMixedEffectRegressionWithoutPurity(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
+            RegressionResults = rbind(RegressionResults, data.frame(DoMixedEffectRegressionWithoutPurity(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
+        } else if (RegressionType == 'ByPurity') {
+            RegressionResults = rbind(RegressionResults, data.frame(DoRegressionByPurity(SingleGene, NormalizeY, ModelDiagnostics), GeneName))
         }}, 
             error=function(error_message) { 
             print(message(error_message))
@@ -225,12 +270,41 @@ DoModelDiagnostics = function(df, model, DiagnosticType='') {
         # Durbin Watson test should be a value of 2 if no autocorrelatoin
         # Should perhaps also run Breusch-Godfrey test?
         Diagnostics = data.frame(durbin_watson = durbinWatsonTest(c(resid(model))), # Durbin Watson test should be a value of 2 if no autocorrelation
-            ks_statistic = ks.test(c(resid(model)), c(fitted(model)))$statistic, ks_pvalue = ks.test(c(resid(model)), c(fitted(model)))$p.value) 
+            ks_statistic = ks.test(c(resid(model)), c)$statistic, ks_pvalue = ks.test(c(resid(model)), c(fitted(model)))$p.value) 
     } else if (DiagnosticType == 'Homoscedasticity') { # residuals should follow normal distribution with zero mean and equal variance
         # Perform Anderson-Darling test where null hypothesis is that it is normally distributed; expect to not reject null
         # Add measurements of skewness (test of symmetry in distr) and kurtosis (measure whether distribution is shifted; should be 3 if normally dist)
-        Diagnostics = data.frame(ad_statistic = ad.test((c(resid(model))))$p.value, ad_pvalue=ad.test((c(resid(model))))$p.value,
-                skewness = skewness(c(resid(model))), kurtosis = kurtosis(c(resid(model))) )
+        # Can't add Breusch-Pagan Test for heteroscedasticity; only applies to OLS
+
+        Diagnostics = data.frame(ad_statistic = ad.test((c(resid(model))))$p.value, 
+                ad_pvalue=ad.test((c(resid(model))))$p.value,
+                skewness = skewness(c(resid(model))), 
+                kurtosis = kurtosis(c(resid(model))))
+                
+    } else if (DiagnosticType == 'AllModelDiagnostics') {
+        df = data.frame( ks.test(resid(model), model@frame$NormalizedValue))
+            #homogeneity of variance within groups 
+            # VarPerGroup = data.frame(AbsSqrdError = abs(resid(model))^2, Type = model@frame$type)
+            # data.frame(anova(lm(AbsSqrdError ~ Type, VarPerGroup)))[1:1,]
+            # Test whether variance of the residuals is equal in groups; 
+            # want to REJECT null model if assumption of homoscedasticity is met
+    } else if (DiagnosticType == 'DHARMA') {
+        library(DHARMa)
+        simulationOutput = simulateResiduals(fittedModel = model, plot = F)
+        Diagnostics = data.frame(
+            #BartlettsTest=bartlett.test(formula, dataset), 
+            Uniformity_PVal=testUniformity(simulationOutput)$p.value, #  tests if the overall distribution conforms to expectations; NS
+            Uniformity_Statistic = testUniformity(simulationOutput)$statistic, #  tests if the overall distribution conforms to expectations; NS
+            Outlier_Pval = testOutliers(simulationOutput)$p.value, # tests if there are more simulation outliers than expected
+            Dispersion_PVal = testDispersion(simulationOutput)$p.value, # tests if the simulated dispersion is equal to the observed dispersion
+            Dispersion_Statistic = testDispersion(simulationOutput)$statistic, # tests if the simulated dispersion is equal to the observed dispersion
+            HomogeneityGroupsFValue = testCategorical(simulationOutput, catPred = model@frame$type)$homogeneity[2]$"F value"[1], #tests residuals against a categorical predictor
+            HomogeneityGroupsPVal = testCategorical(simulationOutput, catPred = model@frame$type)$homogeneity[3]$"Pr(>F)"[1], #tests residuals against a categorical predictor
+            testZeroInflation(simulationOutput)$p.value # tests if there are more zeros in the data than expected from the simulations
+        )
+    } else if (DiagnosticType == 'WithinCancerType') {
+        Diagnostics = as.data.frame(data.frame(type = model@frame$type, residual = resid(model)) %>% group_by(type) %>% 
+            summarize(skew= skewness(residual)))
     }
     return(Diagnostics)
 }
