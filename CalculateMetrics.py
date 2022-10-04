@@ -143,6 +143,13 @@ def GetshRNARegression(ModelDiagnostics='None'):
     return(Out)
 
 
+def DoPurityRegression(ModelDiagnostics='None'): 
+    ''' Reviewer request to do GLMM by purity smdfh'''
+    SetUpRegressionPackages()
+    df = GetRegressionStatsInput(Dataset='TCGA', DataType='Expression', MutType='KsKa', AllDrugs=False)
+    R = ConvertPandasDFtoR(df)
+    return(ConvertRDataframetoPandas(ro.r.DoRegressionPerGene(R, 'ByPurity', True, 'None')).reset_index())
+    
 
 def GetPerDrugRegression(ModelDiagnostics='None'):
     '''
@@ -192,20 +199,34 @@ def GetWithinCancerType(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + 
 def GetWithinCancerTypeGrouped(Dataset, DataType, MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/WithinCancerType/'):
     ''' Adds a grouped gene name for OLS  '''
     SetUpRegressionPackages()
-    AllCancerTypes = GetRegressionStatsInput(Dataset, DataType, MutType) # Get input data for 
-    for CancerType in AllCancerTypes['type'].unique(): 
-        Knifed = AllCancerTypes[AllCancerTypes['type'] == CancerType] 
+    groups = GetGeneAnnotationsOfInterest() # Get groups grouped regression will be done on
+    AllCancerTypes = GetRegressionStatsInput(Dataset, DataType, MutType) # Get input data for regression
+    for CancerType in AllCancerTypes['type'].unique().tolist() + ['All Cancers']: # Loop through individual cancer types and all cancer types as ref point
+        OutFile = OutDir + Dataset + DataType + MutType + 'ByComplexGroupRegressionWithinCancerTypeIncludingGeneNameAndPurity' + CancerType.replace(' ','_').replace('/','_') 
+        if CancerType != 'All Cancers':
+            Knifed = AllCancerTypes[AllCancerTypes['type'] == CancerType] 
+        else: # Don't need to subset if looking at all cancer types
+            Knifed = AllCancerTypes
+        Knifed = Knifed.merge(groups, left_on='GeneName', right_on='Hugo')
         R = ConvertPandasDFtoR(Knifed) # Convert df to R for regression
         print('Analyzing cancer type... ' + str(CancerType)) 
-        OutFile = OutDir + Dataset + DataType + MutType + 'ByComplexGroupOLSRegressionWithinCancerType' + CancerType.replace(' ','_').replace('/','_') 
-        if Dataset == 'CCLE':
-             OutFile = OutFile.replace(' ','_').replace('/','_')
-        #elif os.path.isfile(OutFile): # If file already exists, skip
-        #    continue
-        GetshRNARegression(Knifed, False).to_csv(OutFile) # currently as shrna reg but should work for group exp
-    print('Done!')
-
-
+        Out = pd.DataFrame()
+        for Group in groups['Group'].unique():
+            SingleGroup = ConvertPandasDFtoR(Knifed[Knifed['Group'] == Group].dropna()[['LogScore','Value','GeneName','purity','type']])
+            if Dataset == 'TCGA':
+                if CancerType != 'All Cancers':
+                    Reg = ConvertRDataframetoPandas(ro.r.DoLinearRegressionWithPurityAndGeneName(SingleGroup, True, ModelDiagnostics='None')).reset_index()
+                else:
+                    Reg = ConvertRDataframetoPandas(ro.r.DoMixedEffectRegression(SingleGroup, True, ModelDiagnostics='None')).reset_index()
+            elif Dataset == 'CCLE':
+                Reg = ConvertRDataframetoPandas(ro.r.DoOLSRegressionWithGeneName(SingleGroup, True, ModelDiagnostics='None')).reset_index()
+            Reg['Group'] = Group
+            Reg['subgroup'] = groups[groups['Group'] == Group]['subgroup'].unique()[0]
+            Out = Out.append(Reg)
+        Out = Out.dropna().rename(columns={'index':'Coefficient'})
+        Out.to_csv(OutFile)
+        print('Done with cancer type: ' + CancerType)
+    
 
 def JacknifeAcrossCancerTypes(Dataset, DataType, CancerTypeToRemove='', MutType='KsKa', OutDir=os.getcwd() + '/Data/Regression/Jacknife/'):
     ''' 
@@ -287,6 +308,9 @@ def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', ModelDiagno
 # GetWithinCancerType(Dataset='TCGA', DataType='Expression')
 
 
+DoPurityRegression().to_csv('/labs/ccurtis2/tilk/scripts/protein/Data/Regression/TCGA_ByPurity_MixedEffect_RR')
+
+
 # GetWithinCancerType(Dataset='CCLE', DataType='Protein')
 # GetWithinCancerTypeGrouped('TCGA','Expression')
   
@@ -301,6 +325,12 @@ def GetRegressionModelDiagnostics(Dataset, DataType, MutType='KsKa', ModelDiagno
 
 
 # GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics='Homoscedasticity').to_csv('/labs/ccurtis2/tilk/scripts/protein/homoscesdascity-TCGA')
+
+
+# GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics='DHARMA').to_csv('/labs/ccurtis2/tilk/scripts/protein/DHARMA-TCGA')
+
+#GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics='WithinCancerType').to_csv('/labs/ccurtis2/tilk/scripts/protein/Skew-WithinCancerType-TCGA')
+
 
 
 # GetRegressionModelDiagnostics(Dataset='TCGA', DataType='Expression', MutType='KsKa', ModelDiagnostics='NoAutocorrelation').to_csv('/labs/ccurtis2/tilk/scripts/protein/autocor-TCGA')
