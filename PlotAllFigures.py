@@ -11,6 +11,8 @@ from Splicing import *
 from GetAnnotations import *
 from GetData import * 
 
+
+
 def GetFigureInput(FigureName):
     '''
     Outputs a dataframe in R of all of the raw data used for plotting each supplemental and main figure in the manuscript.
@@ -24,6 +26,7 @@ def GetFigureInput(FigureName):
     if FigureName == 'GlobalGSE_TCGA_Regression': # Data for Fig 1B and 1C
         #GetExpressionRegression(Dataset='TCGA', DataType='Expression', MutType='KsKa').to_csv(
         #   InputDir + 'ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
+        SetUpRegressionPackages()
         df = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
         df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
         df = df[df['Coefficient'] == 'LogScore']
@@ -172,19 +175,19 @@ def GetFigureInput(FigureName):
     elif FigureName == 'WithinCancerGrouped_TCGA': # Rev Response #1 - Within cancer type GLMM heat map
         Out = pd.DataFrame()
         # Aggregstes all OLS regression with purity as explanatory
-        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/WithinCancerType/TCGAExpressionKsKaMixedEffectRegressionWithinCancer*'))
+        ListOfCancerTypes = glob.glob(os.path.join(os.getcwd() + '/Data/Regression/WithinCancerType/TCGAExpressionKsKaByComplexGroupRegressionWithinCancerType*'))
         NumSamples = GetTissueType('TCGA').groupby('type').size().reset_index()
         Metadata = AnnotateMutationalLoad(GetPointMutations('TCGA'),'KsKa')
+        LoadForAllCancerTypes = Metadata['MutLoad'].median()
         Metadata = Metadata.merge(GetTissueType('TCGA'), left_on='Barcode', right_on='Barcode').groupby('type')['MutLoad'].median().reset_index()
         Metadata = Metadata.merge(GetTissueType('TCGA').groupby('type').size().reset_index().rename(columns={0:'NumSamples'}))
+        Metadata = Metadata.append(pd.DataFrame({'type':'All_Cancers','MutLoad':LoadForAllCancerTypes,'NumSamples':Metadata['NumSamples'].sum()}, index=[0]))
         for FileName in ListOfCancerTypes:
             df = pd.read_csv(FileName)
-            df['type'] = FileName.split('/')[11].replace('TCGAExpressionKsKaMixedEffectRegressionWithinCancerType','')
-            df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+            df['type'] = FileName.split('/')[11].replace('TCGAExpressionKsKaByComplexGroupRegressionWithinCancerTypeIncludingGeneNameAndPurity','')
             df = df[df['Coefficient'] == 'LogScore'] 
             df = df.merge(Metadata, left_on='type', right_on='type')
             Out = Out.append(df)
-        Out = Out.merge(Complexes, right_on='Hugo', left_on='GeneName')
         return(ConvertPandasDFtoR(Out))
     elif FigureName == 'TMB_Shuffling_BetaDist': # Rev Response #2 - TMB shuffle + visalize p val dist
         shuff = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesTCGAShuffledTMB').assign(Group='Null')
@@ -292,6 +295,9 @@ def GetFigureInput(FigureName):
         # Out = Out.merge(corum[['GeneName','ComplexName']], right_on='GeneName', left_on='GeneName', how='left')#.rename(columns={'Estimate':'Null_Estimate'})
         #Out.to_csv('/home/tilk/ShuffledByGene')
         Out = pd.read_csv('/home/tilk/ShuffledByGene')
+        Out['Adj.Pval.FDR'] = rstats.p_adjust(FloatVector(Out['Pr...t..']), method = 'fdr')
+        GeneSet = Out[(Out['Estimate'] > 0) & (Out['Adj.Pval.FDR'] < 0.05)]['GeneName'].unique()
+        Out['OriginalSigGene'] = Out['GeneName'].isin(GeneSet)
         return(ConvertPandasDFtoR(Out.dropna()))
     elif FigureName == 'CCLE_Correlation_RNA_and_Protein':
         pro = pd.read_csv(InputDir + 'Regression/MedianProteinOLSRegressionEstimatesKsKaCCLE').rename(columns={'Estimate':'Protein_Estimate'})
@@ -315,6 +321,70 @@ def GetFigureInput(FigureName):
         df = df.groupby(['type','GeneName'])['Value'].var().reset_index()
         df = df.merge(Complexes, left_on='GeneName', right_on='Hugo', how='left')
         df.to_csv(InputDir + 'Regression/TCGAVarianceInGeneExpression')
+    elif FigureName == 'AutoCorDiagnostic':
+        df = pd.read_csv(InputDir + '/Regression/Diagnostics/TCGAExpressionKsKaModelDiagnosticResidualVsFittedValsNoAutocorrelation')
+        df = df.merge(Complexes, left_on='GeneName', right_on='Hugo', how='left')
+        # Get all genes that were significant from screen
+        model = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
+        model['Coefficient'] = model['Unnamed: 0'].str.replace('\d+', '')
+        model = model[model['Coefficient'] == 'LogScore']
+        model['GeneName'] = model['GeneName'].str.split('_', expand=True)[0]
+        model['Adj.Pval'] = rstats.p_adjust(FloatVector(model['Pr...t..']), method = 'fdr')
+        GeneSet = model[(model['Estimate'] > 0) & (model['Adj.Pval'] < 0.05)]['GeneName']
+        df['SigGene'] = df.GeneName.isin(GeneSet)
+        return(ConvertPandasDFtoR(df.astype(str)))
+    elif FigureName == 'HomoscedasticityDiagnostic':
+        df = pd.read_csv(InputDir + '/Regression/Diagnostics/TCGAExpressionKsKaModelDiagnosticResidualVsFittedValsHomoscedasticity')
+        df = df.merge(Complexes, left_on='GeneName', right_on='Hugo', how='left')
+        # Get all genes that were significant from screen
+        model = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
+        model['Coefficient'] = model['Unnamed: 0'].str.replace('\d+', '')
+        model = model[model['Coefficient'] == 'LogScore']
+        model['GeneName'] = model['GeneName'].str.split('_', expand=True)[0]
+        model['Adj.Pval'] = rstats.p_adjust(FloatVector(model['Pr...t..']), method = 'fdr')
+        GeneSet = model[(model['Estimate'] > 0) & (model['Adj.Pval'] < 0.05)]['GeneName']
+        df['SigGene'] = df.GeneName.isin(GeneSet)
+        return(ConvertPandasDFtoR(df.astype(str)))
+    elif FigureName == 'ModelAssumptions':
+        df = AnnotateMutationalLoad(GetPointMutations(Dataset='CCLE'), MutType='KsKa').assign(Dataset='CCLE').merge(
+            GetTissueType('CCLE'), left_on='Barcode', right_on='Barcode').append(
+            AnnotateMutationalLoad(GetPointMutations(Dataset='TCGA'), MutType='KsKa').assign(Dataset='TCGA').merge(
+                GetTissueType('TCGA'), left_on='Barcode', right_on='Barcode'))
+        return(ConvertPandasDFtoR(df))
+    elif FigureName == 'VolcanoPlotCutoff':
+        df = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
+        df['Coefficient'] = df['Unnamed: 0'].str.replace('\d+', '')
+        df = df[df['Coefficient'] == 'LogScore']
+        df['GeneName'] = df['GeneName'].str.split('_', expand=True)[0]
+        return(ConvertPandasDFtoR(df.astype(str)))
+    elif FigureName == 'dharma':
+        df = pd.read_csv(InputDir + '/Regression/Diagnostics/TCGAExpressionKsKaModelDiagnosticResidualVsFittedValsDHARMA')
+    elif FigureName == 'AS_Thresholds':
+        df = pd.concat([pd.read_csv(InputDir + '/AS_Tables/TCGA_RI_Counts_ThresholdByPSI_0.8').assign(STD='1'),
+            pd.read_csv(InputDir + '/AS_Tables/TCGA_STD_ValueThresh_0.05_RI_Counts_ThresholdByPSI_0.8FiltereQTLS_True').assign(STD='0.05'),
+            pd.read_csv(InputDir + '/AS_Tables/TCGA_STD_ValueThresh_2_RI_Counts_ThresholdByPSI_0.8FiltereQTLS_True').assign(STD='2')])
+        return(ConvertPandasDFtoR(df))
+    elif FigureName == 'ScatterPlotViability_shRNA':
+        df=GetRegressionStatsInput(Dataset='CCLE', DataType='RNAi', MutType='KsKa', AllDrugs=False)
+        df = df.merge(Complexes, left_on='GeneName', right_on='Hugo')
+        return(ConvertPandasDFtoR(df))
+    elif FigureName == 'ScatterPlotViability_Drug':
+        df=GetRegressionStatsInput(Dataset='CCLE', DataType='Drug', MutType='KsKa', AllDrugs=False)
+        return(ConvertPandasDFtoR(df))
+    elif FigureName == 'SkewnessAcrossCancerTypes': 
+        # Get all genes that were significant from screen
+        model = pd.read_csv(InputDir + '/Regression/ExpressionMixedEffectRegressionEstimatesKsKaTCGAPurity')
+        model['Coefficient'] = model['Unnamed: 0'].str.replace('\d+', '')
+        model = model[model['Coefficient'] == 'LogScore']
+        model['GeneName'] = model['GeneName'].str.split('_', expand=True)[0]
+        model['Adj.Pval'] = rstats.p_adjust(FloatVector(model['Pr...t..']), method = 'fdr')
+        GeneSet = model[(model['Estimate'] > 0) & (model['Adj.Pval'] < 0.05)]['GeneName']
+        # Merge to model diagnostics for all cancer types and across all samples
+        CancerTypes = pd.read_csv(InputDir + '/Regression/Diagnostics/TCGAExpressionKsKaModelDiagnosticResidualVsFittedValsWithinCancerType').rename(columns={'skew':'skewness'})
+        All = pd.read_csv(InputDir + '/Regression/Diagnostics/TCGAExpressionKsKaModelDiagnosticResidualVsFittedValsHomoscedasticity').assign(type='All Cancers')
+        skew = CancerTypes[['type','skewness','GeneName']].append(All[['type','skewness','GeneName']])
+        skew['SigGene'] = skew.GeneName.isin(GeneSet)
+        return(ConvertPandasDFtoR(skew))
 
 
 
@@ -376,11 +446,33 @@ def GetFigure(Figure):
         ro.r.PlotAllCorumNullvsObs(GetFigureInput('AdjPValueAllCorum'))
     elif Figure == 'CCLE_Correlation_RNA_and_Protein': # RR - correlation coefficients between rna and protein
         ro.r.PlotCorrelationCoefficientsBetweenExpAndProt(GetFigureInput('CCLE_Correlation_RNA_and_Protein'))
+    elif Figure == 'HomoscedasticityDiagnostic':
+        ro.r.PlotHomoscedasticityDiagnostic(GetFigureInput('HomoscedasticityDiagnostic'))
+    elif Figure == 'AutoCorDiagnostic':
+        ro.r.PlotAutoCorDiagnostic(GetFigureInput('AutoCorDiagnostic'))
+    elif Figure == 'ModelAssumptions':
+        ro.r.NormalDistMutLoad(GetFigureInput('ModelAssumptions'))
+    elif Figure == 'EffectSizeVolcanoPlot':
+        ro.r.VolcanoPlotEffectSize(GetFigureInput('AdjPValueAllCorum'))
+    elif Figure == 'ScatterPlotViability_shRNA':
+        ro.r.ScatterPlotViabilityByLoadForRNAi(GetFigureInput('ScatterPlotViability_shRNA'))
+    elif Figure == 'ScatterPlotViability_Drug':
+        ro.r.ScatterPlotViabilityByLoadForDrug(GetFigureInput('ScatterPlotViability_Drug'))
+    elif Figure == 'SkewnessAcrossCancerTypes':
+        ro.r.PlotSkewnessForAllCancerTypes(GetFigureInput('SkewnessAcrossCancerTypes'))
+
+
+foo=GetFigureInput('ScatterPlotViability_shRNA')
+
+SetUpPlottingPackages();ro.r.ScatterPlotViabilityByLoadForDrug(foo)
+
+
+# SetUpPlottingPackages();ro.r.PlotAutoCorDiagnostic(GetFigureInput('AutoCorDiagnostic'))
 
 
 #GetFigureInput('AdjPValueAllCorum')
 
-GetFigureInput('VarianceExpressionByCancerType')
+# GetFigureInput('VarianceExpressionByCancerType')
 
 
 # ro.r.PlotCancerTypeInComplexesAcrossGroups(GetFigureInput('WithinCancerGrouped_TCGA'))
